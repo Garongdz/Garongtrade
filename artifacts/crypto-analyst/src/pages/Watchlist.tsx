@@ -4,23 +4,21 @@ import CryptoTable from "@/components/CryptoTable";
 export default function Watchlist() {
   return (
     <Layout>
-      <div className="flex flex-col gap-10 pb-16">
-        
+      <div className="flex flex-col w-full h-[calc(100vh-3.5rem)]">
         {/* Header Section */}
-        <div>
-          <h1 className="text-4xl md:text-5xl font-extrabold font-display tracking-tight text-white mb-3">
-            Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Watchlist</span>
+        <div className="border-b border-border bg-card px-4 py-3">
+          <h1 className="text-lg font-bold font-sans tracking-tight text-foreground">
+            Watchlist
           </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl">
-            Track and analyze the assets you care about most.
+          <p className="text-muted-foreground text-xs">
+            Track your favorite pairs
           </p>
         </div>
 
         {/* Watchlist Table */}
-        <section>
+        <div className="flex-1 overflow-hidden bg-background">
           <CryptoTable filterWatchlistOnly />
-        </section>
-
+        </div>
       </div>
     </Layout>
   );

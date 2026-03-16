@@ -10,7 +10,6 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/utils";
 
 interface CoinChartProps {
@@ -25,86 +24,101 @@ export default function CoinChart({ symbol, name, currentPrice, priceChange }: C
   const { data, isLoading } = useGetCryptoHistory(symbol, { days });
 
   const isPositive = priceChange >= 0;
-  const strokeColor = isPositive ? "hsl(var(--positive))" : "hsl(var(--destructive))";
-  const fillId = `color${symbol}`;
+  const strokeColor = "#F0B90B"; // Binance Yellow
 
   return (
-    <div className="w-full flex flex-col h-full">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
-        <div>
-          <h2 className="text-3xl font-bold font-display text-white mb-2">{name} <span className="text-muted-foreground text-xl uppercase">({symbol})</span></h2>
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-mono font-bold text-white tracking-tight">{formatCurrency(currentPrice)}</span>
-            <span className={`text-lg font-bold ${isPositive ? 'text-positive' : 'text-destructive'}`}>
-              {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
-            </span>
-          </div>
+    <div className="flex flex-col h-full bg-background rounded-sm overflow-hidden font-sans">
+      {/* Chart Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 border-b border-border bg-card">
+        <div className="flex items-baseline gap-4">
+          <h2 className="text-xl font-bold text-foreground uppercase flex items-center gap-2">
+            {symbol}/USDT
+            <span className="text-xs text-muted-foreground font-normal normal-case underline decoration-dashed cursor-help">{name}</span>
+          </h2>
+          <span className={`text-xl font-mono-price font-bold ${isPositive ? 'text-positive' : 'text-destructive'}`}>
+            {formatCurrency(currentPrice)}
+          </span>
+          <span className={`text-sm font-mono-price font-bold ${isPositive ? 'text-positive' : 'text-destructive'}`}>
+            {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+          </span>
         </div>
 
-        <Tabs defaultValue="7" onValueChange={(v) => setDays(Number(v))} className="w-[300px]">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="7">7D</TabsTrigger>
-            <TabsTrigger value="30">30D</TabsTrigger>
-            <TabsTrigger value="90">90D</TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* Flat Time Selector */}
+        <div className="flex gap-1 mt-2 sm:mt-0">
+          {[
+            { label: '7D', value: 7 },
+            { label: '30D', value: 30 },
+            { label: '90D', value: 90 },
+          ].map(item => (
+            <button
+              key={item.value}
+              onClick={() => setDays(item.value)}
+              className={`px-3 py-1 text-xs font-medium border-b-2 transition-colors ${
+                days === item.value 
+                ? 'text-primary border-primary' 
+                : 'text-muted-foreground border-transparent hover:text-foreground'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="flex-1 min-h-[400px] w-full mt-4 bg-white/5 rounded-2xl border border-white/5 p-4 pt-8">
+      {/* Chart Area */}
+      <div className="flex-1 w-full bg-background p-2">
         {isLoading || !data ? (
           <div className="w-full h-full flex items-center justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
-              <defs>
-                <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={strokeColor} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={strokeColor} stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+              <CartesianGrid strokeDasharray="3 3" vertical={true} stroke="#2B3139" opacity={0.5} />
               <XAxis 
                 dataKey="timestamp" 
                 tickFormatter={(time) => format(new Date(time), days > 7 ? 'MMM d' : 'EEE p')}
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickMargin={12}
+                stroke="#848E9C"
+                fontSize={10}
+                tickMargin={8}
                 tickLine={false}
                 axisLine={false}
                 minTickGap={30}
+                fontFamily="Roboto Mono, monospace"
               />
               <YAxis 
                 domain={['auto', 'auto']}
                 tickFormatter={(val) => formatCurrency(val, 0)}
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
+                stroke="#848E9C"
+                fontSize={10}
                 tickLine={false}
                 axisLine={false}
-                tickMargin={12}
+                tickMargin={8}
                 orientation="right"
+                fontFamily="Roboto Mono, monospace"
               />
               <Tooltip 
+                cursor={{ stroke: '#848E9C', strokeWidth: 1, strokeDasharray: '4 4' }}
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-card/90 backdrop-blur-xl border border-white/10 p-4 rounded-xl shadow-2xl">
-                        <p className="text-muted-foreground text-xs font-semibold mb-2">
+                      <div className="bg-card border border-border p-3 text-xs shadow-xl rounded-sm">
+                        <p className="text-muted-foreground mb-1 font-mono-price">
                           {format(new Date(data.timestamp), 'MMM d, yyyy HH:mm')}
                         </p>
-                        <p className="text-white font-mono font-bold text-lg">
-                          {formatCurrency(data.close)}
-                        </p>
-                        <div className="flex gap-4 mt-2 pt-2 border-t border-white/10 text-xs">
-                          <div>
-                            <span className="text-muted-foreground">High </span>
-                            <span className="text-white font-mono">{formatCurrency(data.high)}</span>
+                        <div className="space-y-1 font-mono-price">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">Price</span>
+                            <span className="text-primary">{formatCurrency(data.close)}</span>
                           </div>
-                          <div>
-                            <span className="text-muted-foreground">Low </span>
-                            <span className="text-white font-mono">{formatCurrency(data.low)}</span>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">High</span>
+                            <span className="text-foreground">{formatCurrency(data.high)}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-muted-foreground">Low</span>
+                            <span className="text-foreground">{formatCurrency(data.low)}</span>
                           </div>
                         </div>
                       </div>
@@ -117,10 +131,9 @@ export default function CoinChart({ symbol, name, currentPrice, priceChange }: C
                 type="monotone" 
                 dataKey="close" 
                 stroke={strokeColor} 
-                strokeWidth={3}
-                fillOpacity={1} 
-                fill={`url(#${fillId})`} 
-                animationDuration={1500}
+                strokeWidth={2}
+                fill="none" 
+                animationDuration={0}
               />
             </AreaChart>
           </ResponsiveContainer>

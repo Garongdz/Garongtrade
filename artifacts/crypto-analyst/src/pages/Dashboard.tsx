@@ -6,33 +6,25 @@ import CryptoTable from "@/components/CryptoTable";
 export default function Dashboard() {
   return (
     <Layout>
-      <div className="flex flex-col gap-10 pb-16">
-        
-        {/* Header Section */}
-        <div>
-          <h1 className="text-4xl md:text-5xl font-extrabold font-display tracking-tight text-white mb-3">
-            Market <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-indigo-500">Overview</span>
-          </h1>
-          <p className="text-muted-foreground text-lg max-w-2xl">
-            Live metrics, trending assets, and comprehensive price data for the global cryptocurrency market.
-          </p>
+      <div className="flex flex-col w-full">
+        {/* Global Market Stats Bar */}
+        <div className="border-b border-border bg-card">
+          <MarketOverview />
         </div>
 
-        {/* Global Market Stats */}
-        <section>
-          <MarketOverview />
-        </section>
-
-        {/* Trending Coins Marquee/Grid */}
-        <section>
-          <TrendingGrid />
-        </section>
-
-        {/* Main Data Table */}
-        <section>
-          <CryptoTable />
-        </section>
-
+        <div className="flex flex-col xl:flex-row w-full h-[calc(100vh-3.5rem-41px)]">
+          {/* Main Data Table */}
+          <section className="flex-1 flex flex-col min-w-0 border-r border-border h-full overflow-hidden bg-background">
+            <div className="h-full flex flex-col">
+              <CryptoTable />
+            </div>
+          </section>
+          
+          {/* Right Sidebar - Trending */}
+          <section className="w-full xl:w-[320px] shrink-0 border-t xl:border-t-0 border-border bg-card h-full overflow-y-auto">
+            <TrendingGrid />
+          </section>
+        </div>
       </div>
     </Layout>
   );
