@@ -23,7 +23,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <LineChart className="h-5 w-5 text-white" />
               </div>
               <span className="font-display text-xl font-bold tracking-tight text-white hidden sm:block">
-                Crypto<span className="text-primary">Analyst</span>
+                Garongdz'<span className="text-primary">Trade</span>
               </span>
             </div>
 
