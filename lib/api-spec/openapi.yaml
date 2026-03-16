@@ -1,15 +1,16 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Crypto Analyst API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: crypto
+    description: Cryptocurrency data operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,127 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /crypto/prices:
+    get:
+      operationId: getCryptoPrices
+      tags: [crypto]
+      summary: Get cryptocurrency prices
+      description: Returns current prices and 24h change for top cryptocurrencies
+      responses:
+        "200":
+          description: List of cryptocurrency prices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CryptoPrice"
+  /crypto/market-overview:
+    get:
+      operationId: getMarketOverview
+      tags: [crypto]
+      summary: Get market overview stats
+      description: Returns global crypto market statistics
+      responses:
+        "200":
+          description: Market overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketOverview"
+  /crypto/{symbol}/history:
+    get:
+      operationId: getCryptoHistory
+      tags: [crypto]
+      summary: Get price history for a coin
+      description: Returns OHLCV price history for a specific cryptocurrency
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Coin symbol (e.g. BTC, ETH)
+        - name: days
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Number of days of history (default 7)
+      responses:
+        "200":
+          description: Price history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PricePoint"
+  /crypto/trending:
+    get:
+      operationId: getTrendingCoins
+      tags: [crypto]
+      summary: Get trending coins
+      description: Returns currently trending cryptocurrencies
+      responses:
+        "200":
+          description: Trending coins
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrendingCoin"
+  /watchlist:
+    get:
+      operationId: getWatchlist
+      tags: [crypto]
+      summary: Get user watchlist
+      description: Returns the saved watchlist of cryptocurrencies
+      responses:
+        "200":
+          description: Watchlist
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WatchlistItem"
+    post:
+      operationId: addToWatchlist
+      tags: [crypto]
+      summary: Add coin to watchlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWatchlistItem"
+      responses:
+        "201":
+          description: Added successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistItem"
+  /watchlist/{symbol}:
+    delete:
+      operationId: removeFromWatchlist
+      tags: [crypto]
+      summary: Remove coin from watchlist
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Removed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessMessage"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +155,166 @@ components:
           type: string
       required:
         - status
-
+    CryptoPrice:
+      type: object
+      properties:
+        id:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        current_price:
+          type: number
+        price_change_24h:
+          type: number
+        price_change_percentage_24h:
+          type: number
+        market_cap:
+          type: number
+        market_cap_rank:
+          type: integer
+        total_volume:
+          type: number
+        high_24h:
+          type: number
+        low_24h:
+          type: number
+        image:
+          type: string
+        ath:
+          type: number
+        ath_change_percentage:
+          type: number
+        circulating_supply:
+          type: number
+      required:
+        - id
+        - symbol
+        - name
+        - current_price
+        - price_change_24h
+        - price_change_percentage_24h
+        - market_cap
+        - market_cap_rank
+        - total_volume
+        - high_24h
+        - low_24h
+        - image
+        - ath
+        - ath_change_percentage
+        - circulating_supply
+    MarketOverview:
+      type: object
+      properties:
+        total_market_cap:
+          type: number
+        total_volume_24h:
+          type: number
+        btc_dominance:
+          type: number
+        eth_dominance:
+          type: number
+        market_cap_change_24h:
+          type: number
+        active_cryptocurrencies:
+          type: integer
+        fear_greed_index:
+          type: integer
+        fear_greed_label:
+          type: string
+      required:
+        - total_market_cap
+        - total_volume_24h
+        - btc_dominance
+        - eth_dominance
+        - market_cap_change_24h
+        - active_cryptocurrencies
+        - fear_greed_index
+        - fear_greed_label
+    PricePoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        open:
+          type: number
+        high:
+          type: number
+        low:
+          type: number
+        close:
+          type: number
+        volume:
+          type: number
+      required:
+        - timestamp
+        - open
+        - high
+        - low
+        - close
+        - volume
+    TrendingCoin:
+      type: object
+      properties:
+        id:
+          type: string
+        symbol:
+          type: string
+        name:
+          type: string
+        market_cap_rank:
+          type: integer
+        price_btc:
+          type: number
+        score:
+          type: integer
+        image:
+          type: string
+        price_change_percentage_24h:
+          type: number
+        current_price_usd:
+          type: number
+      required:
+        - id
+        - symbol
+        - name
+        - market_cap_rank
+        - price_btc
+        - score
+        - image
+        - price_change_percentage_24h
+        - current_price_usd
+    WatchlistItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        symbol:
+          type: string
+        name:
+          type: string
+        added_at:
+          type: string
+      required:
+        - id
+        - symbol
+        - name
+        - added_at
+    AddWatchlistItem:
+      type: object
+      properties:
+        symbol:
+          type: string
+        name:
+          type: string
+      required:
+        - symbol
+        - name
+    SuccessMessage:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message

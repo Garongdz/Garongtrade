@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "Animations and page transitions"
+  "recharts": "Interactive area and line charts for cryptocurrency price history"
+  "date-fns": "Date formatting for charts and tables"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility function to efficiently merge Tailwind CSS classes"
+  "@radix-ui/react-dialog": "Accessible modal dialogs for coin details"
+  "@radix-ui/react-tabs": "Accessible tabs for chart timeframe selection"
+  "@radix-ui/react-slot": "Slot component for accessible button rendering"
+
+images:
+  - path: "artifacts/crypto-analyst/public/images/hero-glow.png"
+    description: "Abstract minimal dark background with a soft glowing cyan and indigo gradient mesh, professional finance aesthetic"
+    aspect_ratio: "16:9"
+
+notes:
+  - Using provided API hooks from @workspace/api-client-react
+  - Defaulting to a dark mode financial dashboard aesthetic
