@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LineChart, LayoutDashboard, Star, BellRing, Settings } from "lucide-react";
+import { LineChart, LayoutDashboard, Star, BellRing, Settings, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -8,6 +8,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
     { href: "/watchlist", label: "Watchlist", icon: Star },
+    { href: "/ai-analyst", label: "AI Analyst", icon: BrainCircuit },
   ];
 
   return (

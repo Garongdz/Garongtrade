@@ -5,12 +5,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import Watchlist from "@/pages/Watchlist";
+import AiAnalyst from "@/pages/AiAnalyst";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      staleTime: 1000 * 60 * 5, // 5 minutes cache
+      staleTime: 1000 * 60 * 5,
     }
   }
 });
@@ -20,6 +21,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/watchlist" component={Watchlist} />
+      <Route path="/ai-analyst" component={AiAnalyst} />
       <Route component={NotFound} />
     </Switch>
   );
