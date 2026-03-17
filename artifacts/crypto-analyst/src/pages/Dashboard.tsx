@@ -13,8 +13,6 @@ import { usePriceFlash } from "@/hooks/usePriceFlash";
 import { formatCurrency, formatCompactNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Star, ArrowUpDown, Search, TrendingUp, TrendingDown, Gauge, RefreshCw } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import CoinChart from "@/components/CoinChart";
 import { Input } from "@/components/ui/input";
 import Layout from "@/components/Layout";
 
@@ -758,7 +756,7 @@ function MarketTable({
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<keyof CoinData>("market_cap_rank");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
-  const [selectedCoin, setSelectedCoin] = useState<CoinData | null>(null);
+  const [, navigate] = useLocation();
 
   const { data: watchlist } = useGetWatchlist();
   const queryClient = useQueryClient();
@@ -934,7 +932,7 @@ function MarketTable({
                   isWatchlisted={watchlistSymbols.has(coin.symbol.toUpperCase())}
                   signal={signalMap.get(coin.symbol.toUpperCase()) ?? null}
                   onToggleWatchlist={toggleWatchlist}
-                  onSelect={setSelectedCoin}
+                  onSelect={(coin) => navigate("/chart/" + coin.symbol.toUpperCase())}
                 />
               ))
             )}
@@ -942,18 +940,6 @@ function MarketTable({
         </table>
       </div>
 
-      <Dialog open={!!selectedCoin} onOpenChange={(o) => !o && setSelectedCoin(null)}>
-        <DialogContent className="max-w-5xl h-[85vh] sm:h-[80vh] flex flex-col p-0 border gap-0" style={{ background: C.bg, borderColor: C.border }}>
-          {selectedCoin && (
-            <CoinChart
-              symbol={selectedCoin.symbol}
-              name={selectedCoin.name}
-              currentPrice={selectedCoin.current_price}
-              priceChange={selectedCoin.price_change_percentage_24h}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
