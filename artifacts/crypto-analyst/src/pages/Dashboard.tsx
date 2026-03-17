@@ -12,7 +12,7 @@ import { useBinanceWS } from "@/contexts/BinanceWSContext";
 import { usePriceFlash } from "@/hooks/usePriceFlash";
 import { formatCurrency, formatCompactNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { Star, ArrowUpDown, Search, TrendingUp, Activity, Gauge, RefreshCw } from "lucide-react";
+import { Star, ArrowUpDown, Search, TrendingUp, TrendingDown, Gauge, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import CoinChart from "@/components/CoinChart";
 import { Input } from "@/components/ui/input";
@@ -273,40 +273,54 @@ function TrendingCard({ coins }: { coins: CoinData[] | undefined }) {
   );
 }
 
-function SignalsCard() {
-  const { data: signals } = useSignals();
-  const top3 = signals?.slice(0, 3) ?? [];
+function TopLosersCard({ coins }: { coins: CoinData[] | undefined }) {
+  const { prices } = useBinanceWS();
+  const top3 = useMemo(() => {
+    if (!coins) return [];
+    return [...coins]
+      .sort((a, b) => (a.price_change_percentage_24h ?? 0) - (b.price_change_percentage_24h ?? 0))
+      .slice(0, 3);
+  }, [coins]);
 
   return (
-    <StatCard title="Sinyal Aktif" icon={<Activity className="h-3 w-3" />}>
-      {signals === undefined ? (
+    <StatCard title="Top Losers 24j" icon={<TrendingDown className="h-3 w-3" />}>
+      {top3.length === 0 ? (
         <div className="space-y-2">
           {[0,1,2].map(i => <div key={i} className="h-7 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
         </div>
-      ) : top3.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-3 gap-1">
-          <span className="text-[11px]" style={{ color: C.muted }}>Belum ada sinyal aktif</span>
-          <span className="text-[10px]" style={{ color: `${C.muted}80` }}>Scanner berjalan otomatis</span>
-        </div>
       ) : (
         <div className="space-y-2.5">
-          {top3.map((sig) => {
-            const meta = COIN_META[sig.coin];
+          {top3.map((coin) => {
+            const sym = coin.symbol.toUpperCase();
+            const meta = COIN_META[sym];
+            const live = prices[sym];
+            const livePrice = live?.price ?? coin.current_price;
+            const liveChange = live?.changePercent ?? coin.price_change_percentage_24h;
             return (
-              <div key={sig.coin} className="flex items-center justify-between" style={{ minHeight: 32 }}>
+              <div key={coin.id} className="flex items-center justify-between" style={{ minHeight: 32 }}>
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                    className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex items-center justify-center text-[10px] font-bold"
                     style={{
                       background: meta ? `${meta.color}20` : `${C.muted}20`,
                       color: meta?.color ?? C.muted,
                     }}
                   >
-                    {sig.coin[0]}
+                    {coin.image ? (
+                      <img src={coin.image} alt={sym} className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    ) : sym.slice(0, 2)}
                   </div>
-                  <span className="text-[12px] font-bold" style={{ color: C.text }}>{sig.coin}</span>
+                  <span className="text-[12px] font-bold" style={{ color: C.text }}>{sym}</span>
                 </div>
-                <SignalBadge direction={sig.direction} confidence={sig.confidence} />
+                <div className="text-right">
+                  <div className="text-[12px] font-semibold font-mono" style={{ color: C.text }}>
+                    {formatCurrency(livePrice)}
+                  </div>
+                  <div className="text-[11px] font-semibold font-mono" style={{ color: C.red }}>
+                    {liveChange.toFixed(2)}%
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -871,7 +885,7 @@ export default function Dashboard() {
             {/* Top 4 Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 p-3">
               <TrendingCard coins={coins} />
-              <SignalsCard />
+              <TopLosersCard coins={coins} />
               <FundingRateCard />
               <FearGreedCard />
             </div>
