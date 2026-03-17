@@ -22,7 +22,7 @@ router.get("/market/top50", async (_req, res) => {
   try {
     const r = await fetch(
       "https://api.coingecko.com/api/v3/coins/markets" +
-      "?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h",
+      "?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h",
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) }
     );
     if (!r.ok) throw new Error(`CoinGecko ${r.status}`);

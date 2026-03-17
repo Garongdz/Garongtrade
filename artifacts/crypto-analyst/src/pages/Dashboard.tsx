@@ -141,10 +141,10 @@ function useTop50Coins() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const query = useQuery({
-    queryKey: ["top50-coins"],
+    queryKey: ["top100-coins"],
     queryFn: async (): Promise<CoinData[]> => {
       const r = await fetch(`${BASE}/api/market/top50`);
-      if (!r.ok) throw new Error("Failed to fetch top 50");
+      if (!r.ok) throw new Error("Failed to fetch top 100");
       return r.json();
     },
     refetchInterval: 60_000,
@@ -854,7 +854,7 @@ function MarketTable({
       {/* Table header info + search */}
       <div className="flex items-start justify-between px-4 py-3 gap-3" style={{ borderBottom: `1px solid ${C.border}` }}>
         <div>
-          <div className="text-[14px] font-bold" style={{ color: C.text }}>Top 50 Token — Kapitalisasi Pasar</div>
+          <div className="text-[14px] font-bold" style={{ color: C.text }}>Top 100 Token — Kapitalisasi Pasar</div>
           <div className="flex items-center gap-1.5 mt-0.5">
             <div className="text-[12px]" style={{ color: C.muted }}>Diperbarui otomatis setiap 60 detik</div>
             {lastUpdated && (
