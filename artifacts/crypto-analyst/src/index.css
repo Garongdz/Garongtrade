@@ -112,8 +112,15 @@ html.light {
   20%  { background-color: rgba(246, 70, 93, 0.18); }
   100% { background-color: transparent; }
 }
-.price-flash-up   { animation: flash-up   0.7s ease-out; }
-.price-flash-down { animation: flash-down 0.7s ease-out; }
+.price-flash-up   { animation: flash-up   0.8s ease-out; }
+.price-flash-down { animation: flash-down 0.8s ease-out; }
+
+@keyframes flash-rank {
+  0%   { background-color: transparent; }
+  15%  { background-color: rgba(240, 185, 11, 0.18); }
+  100% { background-color: transparent; }
+}
+.rank-flash { animation: flash-rank 1.2s ease-out; }
 
 /* ── LIVE dot pulse ───────────────────────────────────────────────────────── */
 @keyframes live-pulse {
@@ -153,6 +160,6 @@ html.light {
   transition-timing-function: ease;
 }
 /* Exclude animations from blanket transition */
-.price-flash-up, .price-flash-down, .live-pulse, .ticker-scroll {
+.price-flash-up, .price-flash-down, .rank-flash, .live-pulse, .ticker-scroll {
   transition: none;
 }

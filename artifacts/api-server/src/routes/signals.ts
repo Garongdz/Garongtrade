@@ -9,6 +9,33 @@ import {
 
 const router = Router();
 
+// ── GET /api/market/top50 — CoinGecko top 50 by market cap ──────────────────
+let top50Cache: { data: any[]; ts: number } | null = null;
+
+router.get("/market/top50", async (_req, res) => {
+  const now = Date.now();
+  if (top50Cache && now - top50Cache.ts < 55_000) {
+    res.setHeader("X-Cache", "HIT");
+    return res.json(top50Cache.data);
+  }
+
+  try {
+    const r = await fetch(
+      "https://api.coingecko.com/api/v3/coins/markets" +
+      "?vs_currency=usd&order=market_cap_desc&per_page=50&page=1&sparkline=false&price_change_percentage=24h",
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) }
+    );
+    if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
+    const data = await r.json();
+    top50Cache = { data, ts: now };
+    res.setHeader("X-Cache", "MISS");
+    return res.json(data);
+  } catch (e: any) {
+    if (top50Cache) return res.json(top50Cache.data); // serve stale on error
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── GET /api/market/funding-rates — live OKX funding rates ───────────────────
 router.get("/market/funding-rates", async (_req, res) => {
   const OKX = "https://www.okx.com/api/v5";

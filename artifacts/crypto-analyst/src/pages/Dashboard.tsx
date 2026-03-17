@@ -1,25 +1,44 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  useGetCryptoPrices,
   useGetMarketOverview,
-  useGetTrendingCoins,
   useGetWatchlist,
   useAddToWatchlist,
   useRemoveFromWatchlist,
   getGetWatchlistQueryKey,
-  type CryptoPrice,
 } from "@workspace/api-client-react";
 import { useBinanceWS } from "@/contexts/BinanceWSContext";
 import { usePriceFlash } from "@/hooks/usePriceFlash";
 import { formatCurrency, formatCompactNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
-import { Star, ArrowUpDown, Search, TrendingUp, Activity, Gauge } from "lucide-react";
+import { Star, ArrowUpDown, Search, TrendingUp, Activity, Gauge, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import CoinChart from "@/components/CoinChart";
 import { Input } from "@/components/ui/input";
 import Layout from "@/components/Layout";
+
+// ── CoinGecko Types ────────────────────────────────────────────────────────────
+interface CoinData {
+  id: string;
+  symbol: string;
+  name: string;
+  image: string;
+  current_price: number;
+  market_cap: number;
+  market_cap_rank: number;
+  total_volume: number;
+  price_change_percentage_24h: number;
+  high_24h: number;
+  low_24h: number;
+}
+
+// ── WIB timestamp helper ───────────────────────────────────────────────────────
+function toWIBTimeStr(date: Date): string {
+  // WIB = UTC+7
+  const wib = new Date(date.getTime() + 7 * 3600 * 1000);
+  return wib.toISOString().slice(11, 19) + " WIB";
+}
 
 // ── Design Tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -99,6 +118,52 @@ function useFundingRates() {
   });
 }
 
+function useTop50Coins() {
+  const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  // Track previous ranks for rank-change indicator
+  const prevRanksRef = useRef<Map<string, number>>(new Map());
+  const [rankChanges, setRankChanges] = useState<Map<string, number>>(new Map());
+  const [flashedIds, setFlashedIds] = useState<Set<string>>(new Set());
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const query = useQuery({
+    queryKey: ["top50-coins"],
+    queryFn: async (): Promise<CoinData[]> => {
+      const r = await fetch(`${BASE}/api/market/top50`);
+      if (!r.ok) throw new Error("Failed to fetch top 50");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+  });
+
+  useEffect(() => {
+    if (!query.data) return;
+    const data = query.data;
+    const changes = new Map<string, number>();
+    const flashed = new Set<string>();
+
+    for (const coin of data) {
+      const prev = prevRanksRef.current.get(coin.id);
+      if (prev !== undefined && prev !== coin.market_cap_rank) {
+        changes.set(coin.id, prev - coin.market_cap_rank); // positive = moved up
+        flashed.add(coin.id);
+      }
+    }
+    // Update prev ranks
+    prevRanksRef.current = new Map(data.map(c => [c.id, c.market_cap_rank]));
+    setRankChanges(changes);
+    setLastUpdated(new Date());
+
+    if (flashed.size > 0) {
+      setFlashedIds(flashed);
+      setTimeout(() => setFlashedIds(new Set()), 1400);
+    }
+  }, [query.data]);
+
+  return { ...query, rankChanges, flashedIds, lastUpdated };
+}
+
 // ── Shared sub-components ─────────────────────────────────────────────────────
 function StatCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -145,13 +210,18 @@ function SignalBadge({ direction, confidence }: { direction: string | null; conf
 
 // ── Top 4 Cards ───────────────────────────────────────────────────────────────
 
-function TrendingCard() {
-  const { data } = useGetTrendingCoins();
+function TrendingCard({ coins }: { coins: CoinData[] | undefined }) {
   const { prices } = useBinanceWS();
-  const top3 = data?.slice(0, 3) ?? [];
+  // Top 3 gainers (highest 24h % change)
+  const top3 = useMemo(() => {
+    if (!coins) return [];
+    return [...coins]
+      .sort((a, b) => (b.price_change_percentage_24h ?? 0) - (a.price_change_percentage_24h ?? 0))
+      .slice(0, 3);
+  }, [coins]);
 
   return (
-    <StatCard title="Trending 24j" icon={<TrendingUp className="h-3 w-3" />}>
+    <StatCard title="Top Gainers 24j" icon={<TrendingUp className="h-3 w-3" />}>
       {top3.length === 0 ? (
         <div className="space-y-2">
           {[0,1,2].map(i => <div key={i} className="h-7 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
@@ -162,20 +232,23 @@ function TrendingCard() {
             const sym = coin.symbol.toUpperCase();
             const meta = COIN_META[sym];
             const live = prices[sym];
-            const livePrice = live?.price ?? coin.current_price_usd;
+            const livePrice = live?.price ?? coin.current_price;
             const liveChange = live?.changePercent ?? coin.price_change_percentage_24h;
             const isPos = liveChange >= 0;
             return (
               <div key={coin.id} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                    className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex items-center justify-center text-[10px] font-bold"
                     style={{
                       background: meta ? `${meta.color}20` : `${C.muted}20`,
                       color: meta?.color ?? C.muted,
                     }}
                   >
-                    {sym[0]}
+                    {coin.image ? (
+                      <img src={coin.image} alt={sym} className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    ) : sym.slice(0, 2)}
                   </div>
                   <span className="text-[12px] font-bold" style={{ color: C.text }}>{sym}</span>
                 </div>
@@ -356,19 +429,32 @@ function FearGreedCard() {
   );
 }
 
+// ── Rank Change Indicator ──────────────────────────────────────────────────────
+function RankChange({ delta }: { delta: number | undefined }) {
+  if (!delta) return <span style={{ color: `${C.muted}60` }}>—</span>;
+  if (delta > 0) return <span style={{ color: C.green }}>▲</span>;
+  return <span style={{ color: C.red }}>▼</span>;
+}
+
 // ── Main Table Row ─────────────────────────────────────────────────────────────
 function CoinRow({
   coin,
+  rank,
+  rankDelta,
+  rankFlash,
   isWatchlisted,
   signal,
   onToggleWatchlist,
   onSelect,
 }: {
-  coin: CryptoPrice;
+  coin: CoinData;
+  rank: number;
+  rankDelta: number | undefined;
+  rankFlash: boolean;
   isWatchlisted: boolean;
   signal?: { direction: "LONG" | "SHORT" | null; confidence: number } | null;
-  onToggleWatchlist: (e: React.MouseEvent, coin: CryptoPrice) => void;
-  onSelect: (coin: CryptoPrice) => void;
+  onToggleWatchlist: (e: React.MouseEvent, coin: CoinData) => void;
+  onSelect: (coin: CoinData) => void;
 }) {
   const { prices } = useBinanceWS();
   const sym = coin.symbol.toUpperCase();
@@ -383,7 +469,7 @@ function CoinRow({
   return (
     <tr
       onClick={() => onSelect(coin)}
-      className={cn("cursor-pointer transition-colors", flashClass)}
+      className={cn("cursor-pointer transition-colors", flashClass, rankFlash && "rank-flash")}
       style={{ borderBottom: `1px solid ${C.borderS}` }}
       onMouseEnter={(e) => (e.currentTarget.style.background = C.surfaceH)}
       onMouseLeave={(e) => (e.currentTarget.style.background = "")}
@@ -399,30 +485,47 @@ function CoinRow({
         </button>
       </td>
 
+      {/* Rank */}
+      <td className="px-2 py-3 w-12 text-right hidden sm:table-cell">
+        <div className="flex items-center justify-end gap-0.5">
+          <span className="text-[11px]" style={{ color: `${C.muted}80` }}>{rank}</span>
+          <span className="text-[9px] leading-none"><RankChange delta={rankDelta} /></span>
+        </div>
+      </td>
+
       {/* Nama */}
       <td className="px-3 py-3">
         <div className="flex items-center gap-2.5">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 overflow-hidden"
-            style={{
-              background: meta ? `${meta.color}20` : `${C.muted}20`,
-            }}
+            style={{ background: meta ? `${meta.color}20` : `${C.muted}20` }}
           >
             {coin.image ? (
-              <img src={coin.image} alt={sym} className="w-full h-full object-cover" />
+              <img
+                src={coin.image}
+                alt={sym}
+                width={28}
+                height={28}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const el = e.target as HTMLImageElement;
+                  el.style.display = "none";
+                  el.parentElement!.textContent = sym.slice(0, 3);
+                }}
+              />
             ) : (
-              <span style={{ color: meta?.color ?? C.muted }}>{sym[0]}</span>
+              <span style={{ color: meta?.color ?? C.muted }}>{sym.slice(0, 3)}</span>
             )}
           </div>
           <div>
             <div className="text-[13px] font-bold" style={{ color: C.text }}>{sym}</div>
-            <div className="mt-0.5">
+            <div className="mt-0.5 flex items-center gap-1">
               <span className="text-[11px] hidden sm:inline" style={{ color: C.muted }}>
                 {meta?.fullName ?? coin.name}
               </span>
               {meta && (
                 <span
-                  className="text-[10px] px-1 py-px rounded ml-1 inline-block"
+                  className="text-[10px] px-1 py-px rounded inline-block"
                   style={{ background: `${C.muted}18`, color: C.muted }}
                 >
                   {meta.category}
@@ -477,49 +580,59 @@ function MarketTable({
   activeFilter,
   activeCategory,
   signalMap,
+  coins,
+  rankChanges,
+  flashedIds,
+  lastUpdated,
+  isLoading,
 }: {
   activeFilter: string;
   activeCategory: string;
   signalMap: Map<string, { direction: "LONG"|"SHORT"|null; confidence: number }>;
+  coins: CoinData[] | undefined;
+  rankChanges: Map<string, number>;
+  flashedIds: Set<string>;
+  lastUpdated: Date | null;
+  isLoading: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const [sortKey, setSortKey] = useState<keyof CryptoPrice>("market_cap_rank");
+  const [sortKey, setSortKey] = useState<keyof CoinData>("market_cap_rank");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
-  const [selectedCoin, setSelectedCoin] = useState<CryptoPrice | null>(null);
+  const [selectedCoin, setSelectedCoin] = useState<CoinData | null>(null);
 
-  const { data: prices, isLoading } = useGetCryptoPrices();
   const { data: watchlist } = useGetWatchlist();
   const queryClient = useQueryClient();
   const { mutate: add } = useAddToWatchlist();
   const { mutate: remove } = useRemoveFromWatchlist();
 
   const watchlistSymbols = useMemo(
-    () => new Set(watchlist?.map((w) => w.symbol) ?? []),
+    () => new Set((watchlist ?? []).map((w: any) => w.symbol)),
     [watchlist]
   );
 
-  const toggleWatchlist = (e: React.MouseEvent, coin: CryptoPrice) => {
+  const toggleWatchlist = useCallback((e: React.MouseEvent, coin: CoinData) => {
     e.stopPropagation();
-    const inWl = watchlistSymbols.has(coin.symbol);
+    const sym = coin.symbol.toUpperCase();
+    const inWl = watchlistSymbols.has(sym);
     if (inWl) {
-      remove({ symbol: coin.symbol }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWatchlistQueryKey() }) });
+      remove({ symbol: sym }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWatchlistQueryKey() }) });
     } else {
-      add({ data: { symbol: coin.symbol, name: coin.name } }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWatchlistQueryKey() }) });
+      add({ data: { symbol: sym, name: coin.name } }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getGetWatchlistQueryKey() }) });
     }
-  };
+  }, [watchlistSymbols, add, remove, queryClient]);
 
-  const handleSort = (key: keyof CryptoPrice) => {
+  const handleSort = (key: keyof CoinData) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
   };
 
   const sorted = useMemo(() => {
-    if (!prices) return [];
-    let list = [...prices];
+    if (!coins) return [];
+    let list = [...coins];
 
     // Filter tab
     if (activeFilter === "Favorit") {
-      list = list.filter(c => watchlistSymbols.has(c.symbol));
+      list = list.filter(c => watchlistSymbols.has(c.symbol.toUpperCase()));
     } else if (activeFilter === "Sinyal AI") {
       list = list.filter(c => signalMap.has(c.symbol.toUpperCase()));
     }
@@ -538,32 +651,33 @@ function MarketTable({
 
     // Sort
     list.sort((a, b) => {
-      const av = a[sortKey], bv = b[sortKey];
+      const av = a[sortKey] as number | string;
+      const bv = b[sortKey] as number | string;
       if (av < bv) return sortDir === "asc" ? -1 : 1;
       if (av > bv) return sortDir === "asc" ? 1 : -1;
       return 0;
     });
 
     return list;
-  }, [prices, activeFilter, activeCategory, search, sortKey, sortDir, watchlistSymbols, signalMap]);
+  }, [coins, activeFilter, activeCategory, search, sortKey, sortDir, watchlistSymbols, signalMap]);
 
-  const SortTh = ({ label, sortK, className = "" }: { label: string; sortK: keyof CryptoPrice; className?: string }) => (
+  const SortTh = ({ label, sortK, className = "" }: { label: string; sortK: keyof CoinData; className?: string }) => (
     <th
       className={cn("px-3 py-2.5 text-right cursor-pointer select-none transition-colors hover:text-[#EAECEF]", className)}
       style={{ color: C.muted }}
       onClick={() => handleSort(sortK)}
     >
-      <div className={cn("flex items-center gap-1", className.includes("text-right") ? "justify-end" : "")}>
+      <div className={cn("flex items-center gap-1 justify-end")}>
         <span className="text-[11px] font-semibold">{label}</span>
         <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
       </div>
     </th>
   );
 
-  if (isLoading || !prices) {
+  if (isLoading || !coins) {
     return (
       <div className="space-y-px p-4">
-        {[...Array(8)].map((_, i) => (
+        {[...Array(10)].map((_, i) => (
           <div key={i} className="h-14 rounded animate-pulse" style={{ background: C.surface }} />
         ))}
       </div>
@@ -573,16 +687,24 @@ function MarketTable({
   return (
     <div className="flex flex-col">
       {/* Table header info + search */}
-      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: `1px solid ${C.border}` }}>
+      <div className="flex items-start justify-between px-4 py-3 gap-3" style={{ borderBottom: `1px solid ${C.border}` }}>
         <div>
-          <div className="text-[14px] font-bold" style={{ color: C.text }}>Token Teratas — Kapitalisasi Pasar</div>
-          <div className="text-[12px] mt-0.5" style={{ color: C.muted }}>Harga real-time, volume, perubahan 24j, dan sinyal AI terkini.</div>
+          <div className="text-[14px] font-bold" style={{ color: C.text }}>Top 50 Token — Kapitalisasi Pasar</div>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <div className="text-[12px]" style={{ color: C.muted }}>Diperbarui otomatis setiap 60 detik</div>
+            {lastUpdated && (
+              <div className="flex items-center gap-1 text-[11px]" style={{ color: `${C.muted}90` }}>
+                <RefreshCw className="h-2.5 w-2.5" />
+                {toWIBTimeStr(lastUpdated)}
+              </div>
+            )}
+          </div>
         </div>
         <div className="relative shrink-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: C.muted }} />
           <Input
             placeholder="Cari koin..."
-            className="pl-8 h-8 rounded-sm text-xs w-40 sm:w-52 focus-visible:ring-1"
+            className="pl-8 h-8 rounded-sm text-xs w-36 sm:w-48 focus-visible:ring-1"
             style={{
               background: C.surface,
               border: `1px solid ${C.border}`,
@@ -599,6 +721,14 @@ function MarketTable({
           <thead className="sticky top-0 z-10" style={{ background: C.surface, borderBottom: `1px solid ${C.border}` }}>
             <tr>
               <th className="pl-4 pr-2 py-2.5 w-8" />
+              {/* Rank */}
+              <th
+                className="px-2 py-2.5 text-right cursor-pointer select-none text-[11px] font-semibold hidden sm:table-cell transition-colors hover:text-[#EAECEF]"
+                style={{ color: C.muted, width: 52 }}
+                onClick={() => handleSort("market_cap_rank")}
+              >
+                #
+              </th>
               <th
                 className="px-3 py-2.5 cursor-pointer select-none text-[11px] font-semibold transition-colors hover:text-[#EAECEF]"
                 style={{ color: C.muted }}
@@ -608,7 +738,7 @@ function MarketTable({
               </th>
               <SortTh label="Harga" sortK="current_price" />
               <SortTh label="24j" sortK="price_change_percentage_24h" />
-              <SortTh label="Volume" sortK="total_volume" className="hidden md:table-cell" />
+              <SortTh label="Volume 24j" sortK="total_volume" className="hidden md:table-cell" />
               <SortTh label="Kap Pasar" sortK="market_cap" className="hidden lg:table-cell" />
               <th className="px-4 py-2.5 text-right text-[11px] font-semibold" style={{ color: C.muted }}>
                 Sinyal AI
@@ -618,16 +748,19 @@ function MarketTable({
           <tbody style={{ background: C.bg }}>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-[13px]" style={{ color: C.muted }}>
+                <td colSpan={8} className="py-12 text-center text-[13px]" style={{ color: C.muted }}>
                   Tidak ada koin yang ditemukan.
                 </td>
               </tr>
             ) : (
-              sorted.map((coin) => (
+              sorted.map((coin, idx) => (
                 <CoinRow
                   key={coin.id}
                   coin={coin}
-                  isWatchlisted={watchlistSymbols.has(coin.symbol)}
+                  rank={sortKey === "market_cap_rank" ? coin.market_cap_rank : idx + 1}
+                  rankDelta={rankChanges.get(coin.id)}
+                  rankFlash={flashedIds.has(coin.id)}
+                  isWatchlisted={watchlistSymbols.has(coin.symbol.toUpperCase())}
                   signal={signalMap.get(coin.symbol.toUpperCase()) ?? null}
                   onToggleWatchlist={toggleWatchlist}
                   onSelect={setSelectedCoin}
@@ -662,6 +795,8 @@ export default function Dashboard() {
   const [category, setCategory] = useState("Semua");
 
   const { data: signals } = useSignals();
+  const { data: coins, isLoading: coinsLoading, rankChanges, flashedIds, lastUpdated } = useTop50Coins();
+
   const signalMap = useMemo(() => {
     const m = new Map<string, { direction: "LONG"|"SHORT"|null; confidence: number }>();
     for (const s of signals ?? []) {
@@ -719,7 +854,7 @@ export default function Dashboard() {
           <>
             {/* Top 4 Cards */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 p-3">
-              <TrendingCard />
+              <TrendingCard coins={coins} />
               <SignalsCard />
               <FundingRateCard />
               <FearGreedCard />
@@ -776,6 +911,11 @@ export default function Dashboard() {
               activeFilter={filterTab}
               activeCategory={category}
               signalMap={signalMap}
+              coins={coins}
+              rankChanges={rankChanges}
+              flashedIds={flashedIds}
+              lastUpdated={lastUpdated}
+              isLoading={coinsLoading}
             />
           </>
         )}
@@ -820,7 +960,16 @@ export default function Dashboard() {
                 );
               })}
             </div>
-            <MarketTable activeFilter={filterTab} activeCategory={category} signalMap={signalMap} />
+            <MarketTable
+              activeFilter={filterTab}
+              activeCategory={category}
+              signalMap={signalMap}
+              coins={coins}
+              rankChanges={rankChanges}
+              flashedIds={flashedIds}
+              lastUpdated={lastUpdated}
+              isLoading={coinsLoading}
+            />
           </>
         )}
       </div>

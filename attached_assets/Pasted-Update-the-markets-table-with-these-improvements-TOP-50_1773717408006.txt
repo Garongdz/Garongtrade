@@ -1,0 +1,86 @@
+Update the markets table with these improvements:
+
+## TOP 50 COINS — DYNAMIC RANKING
+
+Fetch top 50 coins by market cap from CoinGecko free API:
+GET https://api.coingecko.com/api/v3/coins/markets
+params:
+  vs_currency=usd
+  order=market_cap_desc
+  per_page=50
+  page=1
+  sparkline=false
+  price_change_percentage=24h
+
+Refresh every 60 seconds automatically.
+If ranking changes (e.g. coin #8 overtakes #7),
+the table row smoothly reorders automatically.
+Show rank number as first column (#1, #2, #3...)
+
+## COIN LOGOS — REAL IMAGES
+CoinGecko API returns image URL for each coin:
+field: image (e.g. https://assets.coingecko.com/coins/images/1/large/bitcoin.png)
+
+Use this as the coin logo in the table:
+<img src="{image}" width="28" height="28" 
+     style="border-radius:50%;object-fit:cover;">
+
+If image fails to load, fallback to colored circle 
+with first 3 letters of ticker.
+
+## TABLE COLUMNS (updated)
+# | Nama | Harga | 24j | Volume 24j | Kap Pasar | Sinyal AI
+
+## AUTO-UPDATE BEHAVIOR
+Every 60 seconds:
+1. Fetch fresh top 50 from CoinGecko
+2. Update prices, changes, volumes, market caps
+3. Re-sort by market cap
+4. If a coin moves up/down in ranking:
+   - Animate the row moving (CSS transition)
+   - Flash yellow highlight briefly on moved rows
+5. Show "Diperbarui: HH:MM:SS WIB" timestamp
+   at top right of table, updates every refresh
+
+## PRICE FLASH ANIMATION
+When price updates:
+- Price increases → brief green flash on price cell
+- Price decreases → brief red flash on price cell
+CSS:
+@keyframes flash-green { 
+  0%{background:rgba(14,203,129,.2)} 
+  100%{background:transparent} 
+}
+@keyframes flash-red { 
+  0%{background:rgba(246,70,93,.2)} 
+  100%{background:transparent} 
+}
+Duration: 0.8s
+
+## RANK CHANGE INDICATOR
+Show small arrow next to rank number:
+▲ green if coin moved up in ranking today
+▼ red if coin moved down
+— gray if no change
+
+## LOADING STATE
+While fetching: show skeleton rows 
+(gray animated placeholder bars)
+Never show empty table
+
+## PAGINATION / VIRTUAL SCROLL  
+Show all 50 rows, add smooth scroll
+Table max-height: auto (show all, no cut off)
+
+## TOP 4 CARDS — UPDATE
+Card 1 (Trending): pull top 3 gainers from the 50
+Card 3 (Funding Rate): keep BTC, ETH, SOL from Bybit
+Card 4 (Fear & Greed): keep existing
+
+## PERFORMANCE
+- Cache CoinGecko response for 60 seconds
+- Don't re-render entire table, only update changed cells
+- Use requestAnimationFrame for smooth animations
+
+Keep all existing features.
+All text Bahasa Indonesia.
