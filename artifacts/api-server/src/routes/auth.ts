@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import {
-  verifyPin, createSessionToken,
+  verifyPin, createSessionToken, verifySessionToken,
   isRateLimited, recordFailedAttempt, clearAttempts,
   COOKIE_NAME,
 } from "../auth";
@@ -45,7 +45,6 @@ router.post("/logout", (_req: Request, res: Response) => {
 
 router.get("/check", (req: Request, res: Response) => {
   const token = req.cookies?.[COOKIE_NAME];
-  const { verifySessionToken } = require("../auth");
   if (token && verifySessionToken(token)) {
     res.json({ authenticated: true });
   } else {

@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
-import { Sun, Moon, BellRing, Zap } from "lucide-react";
+import { Sun, Moon, BellRing, Zap, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TickerTape from "./TickerTape";
 import { useBinanceWS } from "@/contexts/BinanceWSContext";
 import { useAppSettings } from "@/contexts/AppSettingsContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 
 function useActiveSignalCount() {
@@ -25,6 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { connected } = useBinanceWS();
   const { theme, language, toggleTheme, toggleLanguage, t } = useAppSettings();
+  const { logout } = useAuth();
   const signalCount = useActiveSignalCount();
 
   const navItems = [
@@ -144,13 +146,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               />
             </button>
 
-            {/* Avatar */}
-            <div
-              className="h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold cursor-pointer"
-              style={{ background: "#1E2329", border: "1px solid #2B3139", color: "#848E9C" }}
+            {/* Logout */}
+            <button
+              onClick={logout}
+              title="Keluar"
+              className="h-7 w-7 rounded-full flex items-center justify-center transition-colors hover:bg-[#2B3139]"
+              style={{ border: "1px solid #2B3139", color: "#848E9C" }}
             >
-              U
-            </div>
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
 
             {/* Analisis Sekarang button */}
             <Link

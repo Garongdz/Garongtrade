@@ -8,8 +8,10 @@ import ChartPage from "@/pages/Chart";
 import News from "@/pages/News";
 import AiAnalyst from "@/pages/AiAnalyst";
 import Signals from "@/pages/Signals";
+import LoginPage from "@/pages/LoginPage";
 import { BinanceWSProvider } from "@/contexts/BinanceWSContext";
 import { AppSettingsProvider } from "@/contexts/AppSettingsContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,17 +36,43 @@ function Router() {
   );
 }
 
+function AuthGate() {
+  const { authenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div
+        style={{ background: "#0B0E11", minHeight: "100vh" }}
+        className="flex items-center justify-center"
+      >
+        <div
+          className="h-8 w-8 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "#F0B90B", borderTopColor: "transparent" }}
+        />
+      </div>
+    );
+  }
+
+  if (!authenticated) return <LoginPage />;
+
+  return (
+    <AppSettingsProvider>
+      <BinanceWSProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <Router />
+        </WouterRouter>
+      </BinanceWSProvider>
+    </AppSettingsProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AppSettingsProvider>
-          <BinanceWSProvider>
-            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-              <Router />
-            </WouterRouter>
-          </BinanceWSProvider>
-        </AppSettingsProvider>
+        <AuthProvider>
+          <AuthGate />
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

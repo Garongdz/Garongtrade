@@ -1,0 +1,130 @@
+# Sekarang:
+login_attempts = {}  # in-memory dict
+
+# Masalah:
+# Kalau server restart (karena deploy baru, crash, dll)
+# semua rate limit records hilang
+# User yang sudah di-lock bisa langsung coba lagi
+
+# Fix untuk Replit (tanpa Redis):
+# Simpan ke file sementara sebagai JSON
+
+import json, os
+
+ATTEMPTS_FILE = "/tmp/login_attempts.json"
+
+def load_attempts():
+    try:
+        with open(ATTEMPTS_FILE) as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_attempts(attempts):
+    try:
+        with open(ATTEMPTS_FILE, 'w') as f:
+            json.dump(attempts, f, default=str)
+    except:
+        pass
+
+login_attempts = load_attempts()
+```
+
+---
+
+## ✅ Yang Sudah Benar (konfirmasi ulang)
+```
+✅ bcrypt hash PIN
+✅ JWT session token
+✅ httpOnly cookie
+✅ Rate limit 3x → lock 30 detik
+✅ Import order di main.py
+✅ addEventListener (bukan inline onclick)
+✅ "X detik" bukan "Xd"
+✅ .then().catch() bukan async/await
+✅ Exempt paths dasar
+✅ Logout clear cookie
+```
+
+---
+
+## Prompt Final Update — Tambah 4 Fix Ini
+
+Paste ini ke Agent **setelah** prompt login sebelumnya:
+```
+Update the PIN login implementation with these fixes:
+
+## FIX 1 — Secure cookie
+In routes/login.py, change:
+response.set_cookie(secure=False)
+to:
+response.set_cookie(secure=True)
+
+## FIX 2 — Expand exempt paths in middleware/auth.py
+Replace EXEMPT_PATHS with:
+
+EXEMPT_PATHS = [
+    "/login",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/health",
+    "/favicon.ico",
+    "/static/",
+    "/assets/",
+    "/_next/",
+    "/fonts/",
+]
+
+## FIX 3 — Raise error if APP_PIN not set
+In auth.py, replace:
+APP_PIN = os.environ.get("APP_PIN", "000000")
+
+With:
+APP_PIN = os.environ.get("APP_PIN")
+if not APP_PIN:
+    raise RuntimeError(
+        "APP_PIN secret belum diset! "
+        "Tambahkan di Replit Secrets dulu."
+    )
+
+## FIX 4 — Persist login attempts to file
+In auth.py, replace in-memory dict with:
+
+import json
+
+ATTEMPTS_FILE = "/tmp/gs_login_attempts.json"
+
+def _load_attempts():
+    try:
+        with open(ATTEMPTS_FILE) as f:
+            data = json.load(f)
+            for ip in data:
+                if data[ip]["locked_until"]:
+                    data[ip]["locked_until"] = datetime.fromisoformat(
+                        data[ip]["locked_until"]
+                    )
+            return data
+    except:
+        return {}
+
+def _save_attempts(attempts):
+    try:
+        serializable = {}
+        for ip, record in attempts.items():
+            serializable[ip] = {
+                "count": record["count"],
+                "locked_until": (
+                    record["locked_until"].isoformat() 
+                    if record["locked_until"] else None
+                )
+            }
+        with open(ATTEMPTS_FILE, 'w') as f:
+            json.dump(serializable, f)
+    except:
+        pass
+
+login_attempts = _load_attempts()
+
+Update record_failed_attempt() and is_rate_limited() 
+to call _save_attempts(login_attempts) 
+after every modification.
