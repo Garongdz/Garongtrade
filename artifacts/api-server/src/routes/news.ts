@@ -249,7 +249,7 @@ interface NewsCache {
   articles: ProcessedArticle[];
   fetchedAt: number;
 }
-let newsCache: NewsCache | null = null;
+export let newsCache: NewsCache | null = null;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 let fetchInProgress = false;

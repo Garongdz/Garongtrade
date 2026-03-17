@@ -1,0 +1,119 @@
+import { Router } from "express";
+import { db } from "@workspace/db";
+import { signalsTable } from "@workspace/db";
+import { eq, desc, ne, and } from "drizzle-orm";
+import {
+  runScan, isScanRunning, lastScanAt, nextScanAt,
+  scanSettings, updateScanSettings, apiUsage, apiStatus, SCAN_COINS, debugScanCoin,
+} from "../services/scanner";
+
+const router = Router();
+
+// ── GET /api/signals — active signals ────────────────────────────────────────
+router.get("/signals", async (_req, res) => {
+  try {
+    const signals = await db.query.signalsTable.findMany({
+      where: eq(signalsTable.status, "ACTIVE"),
+      orderBy: [desc(signalsTable.confidence)],
+    });
+    res.json({ signals });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/signals/history — closed signals + stats ─────────────────────────
+router.get("/signals/history", async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string || "50"), 200);
+    const history = await db.query.signalsTable.findMany({
+      where: ne(signalsTable.status, "ACTIVE"),
+      orderBy: [desc(signalsTable.created_at)],
+      limit,
+    });
+
+    // Stats (exclude EXPIRED from winrate)
+    const closed = history.filter(s => s.status === "SL_HIT" || s.status?.startsWith("TP"));
+    const wins = closed.filter(s => s.status?.startsWith("TP")).length;
+    const losses = closed.filter(s => s.status === "SL_HIT").length;
+    const winrate = wins + losses > 0 ? Math.round(wins / (wins + losses) * 1000) / 10 : 0;
+
+    // Today signals
+    const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+    const todaySignals = await db.query.signalsTable.findMany({
+      where: and(
+        ne(signalsTable.status, "ACTIVE"),
+      ),
+    }).then(r => r.filter(s => s.created_at >= todayStart).length);
+
+    const activeCount = await db.query.signalsTable.findMany({ where: eq(signalsTable.status, "ACTIVE") }).then(r => r.length);
+
+    res.json({
+      history,
+      stats: {
+        winrate,
+        wins,
+        losses,
+        totalClosed: closed.length,
+        activeCount,
+        todayCount: todaySignals,
+      },
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── POST /api/signals/scan — manual scan ──────────────────────────────────────
+router.post("/signals/scan", async (_req, res) => {
+  if (isScanRunning) { res.json({ message: "Scan sedang berjalan..." }); return; }
+  runScan().catch(e => console.error("[Signals] scan error:", e));
+  res.json({ message: "Scan dimulai", lastScanAt, nextScanAt });
+});
+
+// ── GET /api/signals/status — scanner state ───────────────────────────────────
+router.get("/signals/status", (_req, res) => {
+  res.json({
+    isScanRunning,
+    lastScanAt,
+    nextScanAt,
+    settings: scanSettings,
+    availableCoins: SCAN_COINS,
+  });
+});
+
+// ── GET /api/signals/settings ─────────────────────────────────────────────────
+router.get("/signals/settings", (_req, res) => {
+  res.json(scanSettings);
+});
+
+// ── PUT /api/signals/settings ─────────────────────────────────────────────────
+router.put("/signals/settings", (req, res) => {
+  const body = req.body;
+  const allowed: Record<string, boolean> = { intervalHours: true, minConfidence: true, activeCoins: true, activeHoursStart: true, activeHoursEnd: true, aiEnabled: true };
+  const update: Record<string, any> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (allowed[k]) update[k] = v;
+  }
+  updateScanSettings(update as any);
+  res.json(scanSettings);
+});
+
+// ── GET /api/signals/debug/:coin — debug single coin scan ────────────────────
+router.get("/signals/debug/:coin", async (req, res) => {
+  try {
+    const result = await debugScanCoin(req.params.coin);
+    res.json(result);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── GET /api/signals/api-monitor ──────────────────────────────────────────────
+router.get("/signals/api-monitor", (_req, res) => {
+  res.json({
+    usage: {
+      coinglassMonthly: { used: apiUsage.coinglassMonthly, limit: 10000, unit: "bulan" },
+      blockchairDaily: { used: apiUsage.blockchairDaily, limit: 1440, unit: "hari" },
+      claudeToday: { used: apiUsage.claudeCallsToday, limit: 2, unit: "hari" },
+    },
+    status: apiStatus,
+    hasCoinglassKey: !!process.env.COINGLASS_API_KEY,
+  });
+});
+
+export default router;

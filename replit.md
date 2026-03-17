@@ -54,7 +54,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 ### `artifacts/crypto-analyst` (`@workspace/crypto-analyst`)
 
-Crypto market analyst dashboard. A dark-themed, professional React + Vite frontend served at `/`.
+**Garong'Space** — a full-featured crypto analysis dashboard with Binance Futures dark theme, served at `/`.
 
 Features:
 - Market Overview: global stats (total market cap, 24h volume, BTC/ETH dominance, Fear & Greed index)
@@ -62,34 +62,56 @@ Features:
 - Price Chart: interactive area chart for any selected coin with 7/30/90 day history
 - Trending Coins: card grid showing currently trending/hot coins
 - Watchlist: persistent watchlist stored in PostgreSQL
+- News Feed: AI-curated news from 13+ RSS sources with Claude sentiment analysis (BULLISH/BEARISH/NEUTRAL)
+- Live Trading Signal System: 4-layer scoring (Technical, Derivatives, On-Chain, Macro) with Claude AI analysis
+- Dark/light theme toggle + EN/ID language toggle (default: Indonesian, dark mode)
 
-Data source: CryptoCompare public API (no API key required, 1-minute server-side caching)
+Data sources: CryptoCompare (prices, candles), CoinGecko (market overview, dominance), DefiLlama (TVL), Alternative.me (Fear & Greed), Blockchair (mempool), Mempool.space (mempool count)
+
+**Important**: Binance Spot + Futures APIs are geo-blocked from Replit. Candle data uses CryptoCompare fallback. Derivatives layer gracefully returns score=0/maxPossible=0 with warning when blocked.
 
 ### `artifacts/api-server` (`@workspace/api-server`)
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+Express 5 API server. Routes live in `src/routes/` and use `@workspace/db` for persistence.
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
+- Entry: `src/index.ts` — reads `PORT`, starts Express, WebSocket price stream, scanner scheduler, news sentiment sync
 - App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /healthz`; `src/routes/crypto.ts` exposes all crypto endpoints
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
+- Routes: `src/routes/index.ts` mounts sub-routers
+- Services: `src/services/scanner.ts` — 4-layer trading signal scanner
+- Depends on: `@workspace/db`
 
 ### API Endpoints (all under /api)
 
 - `GET /crypto/prices` — top 30 coins with price, market cap, 24h change
 - `GET /crypto/market-overview` — global market stats
-- `GET /crypto/:symbol/history?days=7` — price history (7/30/90 days)
+- `GET /crypto/:symbol/history?days=7` — price history
 - `GET /crypto/trending` — trending coins
-- `GET /watchlist` — user watchlist
-- `POST /watchlist` — add coin to watchlist
-- `DELETE /watchlist/:symbol` — remove from watchlist
+- `GET /watchlist` — user watchlist; `POST /watchlist`; `DELETE /watchlist/:symbol`
+- `GET /news` — AI-curated news with sentiment
+- `GET /signals` — active trading signals
+- `GET /signals/history` — historical signals
+- `POST /signals/scan` — trigger immediate scan
+- `GET /signals/settings` — scanner settings; `PATCH /signals/settings`
+- `GET /signals/api-monitor` — API usage & status
+- `GET /signals/debug/:coin` — debug single coin scan (scores without saving)
+- `GET /ws/prices` (WebSocket) — real-time price stream
+
+### Trading Signal System
+
+Scoring:
+- **Technical** (max 2): RSI overbought/oversold (+1), Support/Resistance position (+1)
+- **Derivatives** (max 5, blocked on Replit): Funding rate, OI change, L/S ratio, taker ratio
+- **On-Chain** (max 4): Mempool congestion, TX volume change, stablecoin flow, TVL change
+- **Macro** (max 4): Fear & Greed index, BTC dominance change, news sentiment
+
+Dynamic normalization: `rawScore / totalMaxPossible * 10`. If derivatives are blocked, divisor = 10 instead of 15.
+Signal triggers: |normalizedScore| >= 5.0 = RISKY, >= 6.0 = SAFE/MODERATE.
 
 ### `lib/db` (`@workspace/db`)
 
 Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
 
-- Schema: `watchlist` table (id, symbol, name, added_at)
+- Schema: `watchlist` table (id, symbol, name, added_at), `signals` table (full signal with layer scores, levels, AI analysis)
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 

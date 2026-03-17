@@ -1,6 +1,8 @@
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import app from "./app";
+import { startScanner, setNewsSentiment } from "./services/scanner";
+import { newsCache } from "./routes/news";
 
 const rawPort = process.env["PORT"];
 if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
@@ -13,9 +15,11 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/api/ws/prices" });
 const clients = new Set<WebSocket>();
 
+// Latest price cache for scanner
+const priceCache = new Map<string, number>();
+
 wss.on("connection", (client) => {
   clients.add(client);
-  // Send latest cached payload immediately on connect
   if (latestPayload) client.send(latestPayload);
   client.on("close", () => clients.delete(client));
   client.on("error", () => clients.delete(client));
@@ -33,6 +37,7 @@ const TOP_COINS = [
   "BTC","ETH","BNB","SOL","XRP","DOGE","ADA","AVAX","TRX","DOT",
   "LINK","MATIC","LTC","SHIB","UNI","ATOM","XLM","BCH","NEAR","FTM",
   "SAND","AAVE","MKR","ZEC","DASH","XMR","ENJ","CHZ","FLOW","ROSE",
+  "ARB","OP",
 ];
 
 let latestPayload: string | null = null;
@@ -50,12 +55,13 @@ async function fetchAndBroadcast() {
     const json = await res.json() as { RAW?: Record<string, any> };
     const raw = json.RAW ?? {};
 
-    // Transform to Binance-style miniTicker format so frontend parsing stays the same
     const tickers = Object.entries(raw)
       .map(([symbol, markets]: [string, any]) => {
         const usd = markets.USD ?? {};
         const price = usd.PRICE ?? 0;
         const open24 = price - (usd.CHANGE24HOUR ?? 0);
+        // Update price cache for scanner
+        if (price > 0) priceCache.set(`${symbol}USDT`, price);
         return {
           e: "24hrMiniTicker",
           s: `${symbol}USDT`,
@@ -79,8 +85,19 @@ async function fetchAndBroadcast() {
 
 // Poll every 2 seconds
 pollTimer = setInterval(fetchAndBroadcast, 2000);
-// Fire immediately on start
 fetchAndBroadcast();
+
+// ── Sync news sentiment to scanner every 5 min ────────────────────────────────
+setInterval(() => {
+  if (newsCache?.articles) {
+    const b = newsCache.articles.filter(a => a.sentiment === "BULLISH").length;
+    const r = newsCache.articles.filter(a => a.sentiment === "BEARISH").length;
+    setNewsSentiment(b, r);
+  }
+}, 5 * 60_000);
+
+// ── Start Scanner ─────────────────────────────────────────────────────────────
+startScanner((symbol) => priceCache.get(symbol) ?? null);
 
 // ── HTTP server start ─────────────────────────────────────────────────────────
 server.listen(port, () => {

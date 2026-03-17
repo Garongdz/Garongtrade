@@ -8,6 +8,7 @@ import {
   Sun,
   Moon,
   Newspaper,
+  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import TickerTape from "./TickerTape";
@@ -24,6 +25,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: "/watchlist", labelKey: "watchlist", icon: Star },
     { href: "/news", labelKey: "news", icon: Newspaper },
     { href: "/ai-analyst", labelKey: "aiAnalyst", icon: BrainCircuit },
+    { href: "/signals", labelKey: "signals", icon: Zap },
   ];
 
   return (

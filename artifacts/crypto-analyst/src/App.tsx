@@ -7,6 +7,7 @@ import Dashboard from "@/pages/Dashboard";
 import Watchlist from "@/pages/Watchlist";
 import News from "@/pages/News";
 import AiAnalyst from "@/pages/AiAnalyst";
+import Signals from "@/pages/Signals";
 import { BinanceWSProvider } from "@/contexts/BinanceWSContext";
 import { AppSettingsProvider } from "@/contexts/AppSettingsContext";
 
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/watchlist" component={Watchlist} />
       <Route path="/news" component={News} />
       <Route path="/ai-analyst" component={AiAnalyst} />
+      <Route path="/signals" component={Signals} />
       <Route component={NotFound} />
     </Switch>
   );

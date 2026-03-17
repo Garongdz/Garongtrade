@@ -1,0 +1,328 @@
+Build Live Trading Signal System.
+Pure Python calculations, minimal Claude API.
+
+## API SOURCES
+- Binance API: no key needed
+- CoinGlass free tier: COINGLASS_API_KEY in secrets
+- DeFiLlama: no key needed
+- Mempool.space: no key needed
+- CoinGecko: no key needed
+- Blockchair: no key needed
+
+## SCAN ENGINE
+Interval options: 2h / 4h / 6h (default 2h)
+No 1h option — minimum is 2h.
+Coins: BTC, ETH, SOL, BNB, XRP, AVAX, ARB, OP, LINK, DOGE
+CoinGlass data: only BTC, ETH, SOL, BNB, XRP
+Others use Binance API for derivatives.
+CoinGlass always fetches every 2h regardless 
+of scan interval to stay under 10,000/month.
+
+## ERROR HANDLING
+If any API is down or times out:
+- Set that layer score = 0 (neutral)
+- Continue scan with available data
+- Show warning banner on signal card:
+  "⚠ [Nama API] sedang tidak tersedia, 
+   data layer ini dilewati"
+- Never crash the scan
+
+## LAYER 1: TECHNICAL (max ±2)
+Only 2 indicators: Support/Resistance + RSI
+(small weight — lagging, easily manipulated)
+
+RSI 14 on 4h (from Binance candles):
+score_rsi = 0
+if rsi < 30: score_rsi = +1
+elif rsi > 70: score_rsi = -1
+
+Support/Resistance on 4h:
+Find key levels from last 20 candles:
+resistance = max(high_candles_4h[-20:])
+support = min(low_candles_4h[-20:])
+mid = (resistance + support) / 2
+price_position = (current_price - support) / 
+                 (resistance - support)
+
+score_sr = 0
+if price_position < 0.25:
+    score_sr = +1  (near support = potential bounce)
+elif price_position > 0.75:
+    score_sr = -1  (near resistance = potential rejection)
+
+TECHNICAL TOTAL = score_rsi + score_sr
+HARD CAP: max +2, min -2
+
+## LAYER 2: DERIVATIVES (max ±5)
+For BTC/ETH/SOL/BNB/XRP: CoinGlass free API
+For others: Binance API
+
+Funding Rate (most important):
+score_funding = 0
+if funding < -0.03%: score_funding = +2
+elif funding < -0.01%: score_funding = +1
+elif funding <= 0.01%: score_funding = 0
+elif funding <= 0.03%: score_funding = -1
+else: score_funding = -2
+
+Open Interest 4h change:
+score_oi = 0
+if oi_change > +5% AND price_change > 0: score_oi = +1
+elif oi_change > +5% AND price_change < 0: score_oi = -1
+elif oi_change < -5%: score_oi = -1
+
+Long/Short Ratio:
+score_ls = 0
+if ls_ratio < 0.85: score_ls = +1
+elif ls_ratio > 1.5: score_ls = -1
+
+Taker Buy/Sell Volume:
+score_flow = 0
+if buy_ratio > 0.55: score_flow = +1
+elif buy_ratio < 0.45: score_flow = -1
+
+DERIVATIVES TOTAL = score_funding + score_oi + 
+                    score_ls + score_flow
+HARD CAP: max +5, min -5
+
+## LAYER 3: ON-CHAIN (max ±4)
+
+Exchange Netflow proxy (Blockchair):
+GET https://api.blockchair.com/bitcoin/stats
+score_netflow = 0
+if mempool_dropping AND tx_volume_falling: 
+    score_netflow = +2
+elif tx_volume_falling: 
+    score_netflow = +1
+elif tx_volume_rising_sharply: 
+    score_netflow = -1
+elif mempool_rising AND tx_volume_rising: 
+    score_netflow = -2
+
+Stablecoin Supply (DeFiLlama):
+GET https://stablecoins.llama.fi/stablecoins
+score_stable = 0
+if usdt_usdc_supply_24h_change > +1%: score_stable = +1
+elif usdt_usdc_supply_24h_change < -1%: score_stable = -1
+
+DeFi TVL (DeFiLlama):
+GET https://api.llama.fi/v2/globalCharts
+score_tvl = 0
+if tvl_24h_change > +3%: score_tvl = +1
+elif tvl_24h_change < -3%: score_tvl = -1
+
+BTC Mempool (Mempool.space):
+GET https://mempool.space/api/mempool
+score_mempool = 0
+if mempool_count > 50000: score_mempool = +0.5
+elif mempool_count < 5000: score_mempool = -0.5
+
+For altcoins: use same BTC on-chain score 
+as market-wide context.
+
+ON-CHAIN TOTAL = score_netflow + score_stable + 
+                 score_tvl + score_mempool
+Round to nearest 0.5
+HARD CAP: max +4, min -4
+
+## LAYER 4: MACRO (max ±4)
+
+Fear & Greed Index:
+score_fg = 0
+if fg < 20: score_fg = +2
+elif fg < 35: score_fg = +1
+elif fg > 80: score_fg = -2
+elif fg > 65: score_fg = -1
+
+BTC Dominance (CoinGecko):
+score_dom = 0
+For BTC:
+  if dom_24h_change > +0.5%: score_dom = +1
+  elif dom_24h_change < -0.5%: score_dom = -1
+For altcoins:
+  if dom_24h_change > +0.5%: score_dom = -1
+  elif dom_24h_change < -0.5%: score_dom = +1
+
+News Sentiment (from existing news feed):
+score_news = 0
+if bullish_count > bearish_count + 5: score_news = +1
+elif bearish_count > bullish_count + 5: score_news = -1
+
+MACRO TOTAL = score_fg + score_dom + score_news
+HARD CAP: max +4, min -4
+
+## GRAND TOTAL
+raw_score = technical + derivatives + on_chain + macro
+Max = 2+5+4+4 = 15, Min = -15
+normalized = round((raw_score / 15) * 10, 1)
+confidence = abs(normalized) * 10
+
+## SIGNAL TRIGGER (Opsi B — include RISKY)
+normalized >= +6.0 → LONG (confidence >= 60%)
+normalized <= -6.0 → SHORT (confidence >= 60%)
+normalized +5.0 to +5.9 → WEAK LONG → RISKY ⚠
+normalized -5.0 to -5.9 → WEAK SHORT → RISKY ⚠
+-4.9 to +4.9 → WAIT, no signal
+
+## RISK CATEGORIES
+confidence >= 80% = SAFE ✅ 
+  max leverage 10x, recommended to trade
+confidence 60-79% = MODERAT 🟡 
+  max leverage 5x, trade with normal size
+confidence 50-59% = RISKY 🟠 
+  max leverage 2x, small size only
+  show warning: "Setup lemah, hati-hati"
+
+## ENTRY & LEVELS
+entry_low  = current_price * 0.995
+entry_high = current_price * 1.005
+
+For LONG:
+swing_low = min(low_candles_4h[-5:])
+stop_loss = swing_low * 0.997
+sl_distance = current_price - stop_loss
+tp1 = current_price + (sl_distance * 1.5)
+tp2 = current_price + (sl_distance * 3.0)
+tp3 = current_price + (sl_distance * 5.0)
+
+For SHORT:
+swing_high = max(high_candles_4h[-5:])
+stop_loss = swing_high * 1.003
+sl_distance = stop_loss - current_price
+tp1 = current_price - (sl_distance * 1.5)
+tp2 = current_price - (sl_distance * 3.0)
+tp3 = current_price - (sl_distance * 5.0)
+
+## SIGNAL VALIDITY — 4 HOURS
+Auto-expire signal if ANY condition met:
+1. Signal age > 4 hours → EXPIRED ⏰
+2. Price moves > 3% away from entry zone → EXPIRED ⏰
+3. New scan produces opposite direction → EXPIRED ⏰
+
+## DUPLICATE PREVENTION
+Before creating signal, check database:
+If ACTIVE signal exists for same coin 
+AND same direction → SKIP
+Only create new when previous is CLOSED.
+
+## STATUS TRACKING (every 1 minute)
+For LONG:
+price >= tp1 → TP1_HIT ✅
+price >= tp2 → TP2_HIT ✅✅
+price >= tp3 → TP3_HIT ✅✅✅
+price <= stop_loss → SL_HIT ❌
+For SHORT: inverse
+
+## WINRATE (closed signals only)
+Exclude EXPIRED from winrate calculation.
+win = any TP hit
+loss = SL hit
+winrate = wins / (wins + losses) * 100
+profit_factor = total_profit_pct / total_loss_pct
+
+## CLAUDE API
+Model: claude-haiku-4-5-20251001 only
+Trigger: normalized >= 8.0 AND 
+         no Claude call for this coin today
+Max: 2 calls per day
+
+Prompt (short, save tokens):
+"Crypto analyst. {COIN} {DIRECTION}.
+Score:{normalized}/10
+Funding:{X}% OI:{X}% LS:{X}
+FG:{X} TVL:{X}%
+Entry:{X} SL:{X} TP1:{X}
+JSON only: {
+  verdict:'VALID/INVALID/CAUTION',
+  reason:'2 kalimat Bahasa Indonesia',
+  key_risk:'1 kalimat'
+}"
+
+If limit reached:
+"AI reasoning tidak tersedia (limit harian tercapai)"
+
+## SIGNAL CARD UI
+┌───────────────────────────────────┐
+│ SOL/USDT  LONG 🟢   MODERAT 🟡   │
+│ Confidence ████████░░ 73%         │
+├───────────────────────────────────┤
+│ ⚠ Blockchair sedang tidak        │
+│   tersedia, on-chain dilewati     │
+├───────────────────────────────────┤
+│ Entry   : $94,500 — $95,500      │
+│ SL      : $91,200  (-3.2%) 🔴    │
+│ TP1     : $99,700  (+4.0%) 🟢    │
+│ TP2     : $105,900 (+9.8%) 🟢    │
+│ TP3     : $114,000 (+18%) 🟢     │
+│ Max Lev : 5x                      │
+├───────────────────────────────────┤
+│ Teknikal    ██░░░░░░  +1.5/2     │
+│ Derivatives █████░░░  +4.0/5     │
+│ On-Chain    ████░░░░  +3.0/4     │
+│ Makro       ███░░░░░  +2.5/4     │
+│ Score: 7.3/10                     │
+│                                   │
+│ Bobot: Deriv 33% · OC 27% ·      │
+│ Makro 27% · Tech 13%              │
+├───────────────────────────────────┤
+│ "SOL struktur bullish, funding    │
+│  negatif mendukung posisi long"   │
+│ Risk: Volatilitas pre-FOMC        │
+│ Invalidasi: Close 4h < $91,200    │
+│ Valid: 4 jam · Dibuat: 07.18 WIB  │
+├───────────────────────────────────┤
+│ [+ Portfolio][📊 Chart][❌ Skip]  │
+└───────────────────────────────────┘
+
+RISKY signal card: same layout but
+- orange border
+- warning text: "Setup lemah, gunakan size kecil"
+- max leverage shown: 2x only
+
+## SIGNALS PAGE
+Navbar: "Sinyal Live" + blinking red dot 
+if active SAFE/MODERAT signals exist
+
+Stats bar:
+Winrate: XX% | Profit Factor: X.X |
+Active: X | Today: X | Next scan: XX:XX
+[🔄 Scan Sekarang]
+
+Layout:
+- SAFE signals: shown first, full card
+- MODERAT signals: shown second, full card  
+- RISKY signals: shown last, collapsed 
+  with orange warning, expand on click
+- WAIT: not shown
+
+History table:
+Waktu | Coin | Arah | Entry | SL | TP | 
+Result | PnL% | Durasi | Score | Risk Level
+Filter by: coin / result / risk level
+
+## SCAN SETTINGS
+Interval: 2h / 4h / 6h (no 1h option)
+Min confidence: 50% / 60% / 80%
+Coins: toggle per coin
+Active hours: 06.00 - 24.00 WIB default
+AI Reasoning: ON/OFF toggle
+
+## API MONITOR (Settings page)
+CoinGlass: XXXX / 10,000 bulan ini
+Blockchair: XX / 1,440 hari ini
+Claude API: $X.XX / $2.00 bulan ini
+Progress bar each, warning at 80%
+Status dot: 🟢 online / 🔴 down
+for each API source
+
+## NOTIFICATIONS
+SAFE → ping sound + browser notification
+MODERAT → soft ping + notification
+RISKY → badge only, no sound
+TP hit → success chime + green flash
+SL hit → alert sound + red flash
+All toggleable in Settings
+
+Dark Binance theme.
+All text Bahasa Indonesia.
+Monospace font for all numbers.
