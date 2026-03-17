@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import Watchlist from "@/pages/Watchlist";
+import News from "@/pages/News";
 import AiAnalyst from "@/pages/AiAnalyst";
 import { BinanceWSProvider } from "@/contexts/BinanceWSContext";
 import { AppSettingsProvider } from "@/contexts/AppSettingsContext";
@@ -23,6 +24,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/watchlist" component={Watchlist} />
+      <Route path="/news" component={News} />
       <Route path="/ai-analyst" component={AiAnalyst} />
       <Route component={NotFound} />
     </Switch>

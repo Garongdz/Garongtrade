@@ -19,6 +19,7 @@ interface AppSettingsContextValue {
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
+    news: "News",
     markets: "Markets",
     watchlist: "Watchlist",
     aiAnalyst: "AI Analyst",
@@ -52,6 +53,7 @@ const translations: Record<Language, Record<string, string>> = {
     errorPrefix: "Error:",
   },
   id: {
+    news: "Berita",
     markets: "Pasar",
     watchlist: "Watchlist",
     aiAnalyst: "Analis AI",
