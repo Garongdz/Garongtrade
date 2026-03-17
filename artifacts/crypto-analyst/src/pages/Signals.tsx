@@ -102,6 +102,51 @@ function timeUntil(iso: string) {
   return `${h}j ${m % 60}m`;
 }
 
+// ── Derivatives Exchange Breakdown ───────────────────────────────────────────
+function DerivativesBreakdown({ details }: { details: Record<string, any> }) {
+  const [open, setOpen] = useState(false);
+  const contrib: string = details?.exchContrib ?? "";
+  const byExch: Record<string, number | null> = details?.fundingByExch ?? {};
+  const effW: Record<string, number> = details?.fundingEffW ?? {};
+  const exchLabels: Record<string, string> = { binance:"Binance", bybit:"Bybit", okx:"OKX", bitget:"Bitget", gate:"Gate.io" };
+
+  if (!contrib) return null;
+  return (
+    <div className="mt-1.5">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+        <span className="font-mono-price">Data: {contrib}</span>
+        {open ? <ChevronUp className="h-2.5 w-2.5" /> : <ChevronDown className="h-2.5 w-2.5" />}
+      </button>
+      {open && (
+        <div className="mt-2 bg-card/50 border border-border/40 rounded-sm p-3 space-y-1.5">
+          <div className="text-[10px] font-semibold text-foreground mb-2">Funding Rate per Exchange</div>
+          {["binance","bybit","okx","bitget","gate"].map(k => {
+            const val = byExch[k];
+            const w = effW[k] ?? 0;
+            if (w === 0 && val === null) return null;
+            return (
+              <div key={k} className="flex items-center justify-between text-[10px]">
+                <span className="text-muted-foreground w-16 shrink-0">{exchLabels[k]}</span>
+                <span className={cn("font-mono-price font-semibold", val === null ? "text-muted-foreground/50" : val < 0 ? "text-positive" : val > 0 ? "text-negative" : "text-foreground")}>
+                  {val === null ? "—" : `${val > 0 ? "+" : ""}${val.toFixed(4)}%`}
+                </span>
+                <span className="text-muted-foreground/60 w-14 text-right">{w > 0 ? `(bobot ${w}%)` : "(off)"}</span>
+              </div>
+            );
+          })}
+          <div className="flex items-center justify-between text-[10px] pt-1.5 border-t border-border/40">
+            <span className="text-muted-foreground font-semibold">Weighted AVG</span>
+            <span className={cn("font-mono-price font-bold", (details?.fundingRate??0) < 0 ? "text-positive" : (details?.fundingRate??0) > 0 ? "text-negative" : "text-foreground")}>
+              {(details?.fundingRate??0) > 0 ? "+" : ""}{(details?.fundingRate??0).toFixed(4)}%
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Score Bar Component ───────────────────────────────────────────────────────
 function ScoreBar({ label, score, max }: { label: string; score: number; max: number }) {
   const pct = Math.abs(score) / max * 100;
@@ -173,6 +218,7 @@ function SignalCard({ signal, t }: { signal: Signal; t: (k: string) => string })
           <div className="space-y-1.5">
             <ScoreBar label={t("technical")} score={signal.technical_score} max={2} />
             <ScoreBar label={t("derivatives")} score={signal.derivatives_score} max={5} />
+            <DerivativesBreakdown details={signal.layer_details?.derivatives ?? {}} />
             <ScoreBar label={t("onchain")} score={signal.onchain_score} max={4} />
             <ScoreBar label={t("macro")} score={signal.macro_score} max={4} />
           </div>
@@ -369,15 +415,42 @@ function ApiMonitorPanel({ monitor, t }: { monitor: ApiMonitor | null; t: (k: st
       {/* API statuses */}
       <div>
         <h4 className="text-xs font-semibold text-foreground mb-2">Status API Eksternal</h4>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {Object.entries(monitor.status).map(([key, val]) => (
-            <div key={key} className="flex items-center gap-2 text-xs">
-              <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", statusDot[val as string] || "bg-muted-foreground")} />
-              <span className="text-muted-foreground capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-              <span className={cn("ml-auto font-semibold truncate", statusColor[val as string] || "text-muted-foreground")}>{String(val).replace(" (CC)", "★")}</span>
+        {(() => {
+          const labels: Record<string, string> = {
+            binanceFutures: "Binance Futures", bybit: "Bybit", okx: "OKX",
+            bitget: "Bitget", gateio: "Gate.io",
+            binanceSpot: "Binance Spot (candle)", blockchair: "Blockchair",
+            defillama: "DeFiLlama", mempool: "Mempool",
+            coingecko: "CoinGecko", fearGreed: "Fear & Greed", claude: "Claude AI",
+          };
+          const exchKeys = ["binanceFutures","bybit","okx","bitget","gateio"];
+          const dataKeys = ["binanceSpot","blockchair","defillama","mempool","coingecko","fearGreed","claude"];
+          const groups = [
+            { title: "Futures Exchanges", keys: exchKeys },
+            { title: "Data Sources", keys: dataKeys },
+          ];
+          return (
+            <div className="space-y-3">
+              {groups.map(g => (
+                <div key={g.title}>
+                  <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wide mb-1.5">{g.title}</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {g.keys.map(key => {
+                      const val = (monitor.status[key] ?? "unknown") as string;
+                      return (
+                        <div key={key} className="flex items-center gap-1.5 text-xs bg-card/40 rounded-sm px-2 py-1.5 border border-border/30">
+                          <span className={cn("h-1.5 w-1.5 rounded-full shrink-0 flex-none", statusDot[val] || "bg-muted-foreground")} />
+                          <span className="text-muted-foreground truncate text-[10px]">{labels[key] ?? key}</span>
+                          <span className={cn("ml-auto font-semibold text-[10px] shrink-0", statusColor[val] || "text-muted-foreground")}>{String(val).replace(" (CC)", "★")}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </div>
 
       {/* Usage */}

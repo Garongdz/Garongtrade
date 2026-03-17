@@ -1,0 +1,174 @@
+Update multi-exchange aggregator to use 
+TOP 5 futures exchanges with weighted average.
+
+EXCHANGE WEIGHTS (by futures market share):
+BINANCE = 0.50
+BYBIT   = 0.20
+OKX     = 0.15
+BITGET  = 0.10
+GATE    = 0.05
+
+## FUNDING RATE ENDPOINTS
+
+Binance (weight 0.50):
+GET https://fapi.binance.com/fapi/v1/fundingRate
+params: symbol={COIN}USDT, limit=1
+field: fundingRate
+
+Bybit (weight 0.20):
+GET https://api.bybit.com/v5/market/funding/history
+params: category=linear, symbol={COIN}USDT, limit=1
+field: list[0].fundingRate
+
+OKX (weight 0.15):
+GET https://www.okx.com/api/v5/public/funding-rate
+params: instId={COIN}-USDT-SWAP
+field: data[0].fundingRate
+
+Bitget (weight 0.10):
+GET https://api.bitget.com/api/v2/mix/market/current-fund-rate
+params: symbol={COIN}USDT, productType=USDT-FUTURES
+field: data[0].fundingRate
+
+Gate.io (weight 0.05):
+GET https://api.gateio.ws/api/v4/futures/usdt/contracts/{COIN}_USDT
+field: funding_rate
+
+## OPEN INTEREST ENDPOINTS
+
+Binance:
+GET https://fapi.binance.com/futures/data/openInterestHist
+params: symbol={COIN}USDT, period=4h, limit=2
+
+Bybit:
+GET https://api.bybit.com/v5/market/open-interest
+params: category=linear, symbol={COIN}USDT,
+        intervalTime=4h, limit=2
+
+OKX:
+GET https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume
+params: ccy={COIN}, period=4H
+
+Bitget:
+GET https://api.bitget.com/api/v2/mix/market/open-interest
+params: symbol={COIN}USDT, productType=USDT-FUTURES
+
+Gate.io:
+GET https://api.gateio.ws/api/v4/futures/usdt/stats
+params: contract={COIN}_USDT, interval=4h, limit=2
+field: open_interest
+
+## LONG/SHORT RATIO ENDPOINTS
+
+Binance:
+GET https://fapi.binance.com/futures/data/globalLongShortAccountRatio
+params: symbol={COIN}USDT, period=1h, limit=1
+
+Bybit:
+GET https://api.bybit.com/v5/market/account-ratio
+params: category=linear, symbol={COIN}USDT,
+        period=1h, limit=1
+
+OKX:
+GET https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio
+params: ccy={COIN}, period=1H
+
+Bitget:
+GET https://api.bitget.com/api/v2/mix/market/account-long-short-ratio
+params: symbol={COIN}USDT, productType=USDT-FUTURES,
+        period=1h, limit=1
+
+Gate.io:
+GET https://api.gateio.ws/api/v4/futures/usdt/stats
+params: contract={COIN}_USDT, interval=1h, limit=1
+field: long_short_ratio
+
+## TAKER BUY/SELL VOLUME ENDPOINTS
+
+Binance:
+GET https://fapi.binance.com/futures/data/takerlongshortRatio
+params: symbol={COIN}USDT, period=1h, limit=1
+field: buySellRatio
+
+Bybit:
+GET https://api.bybit.com/v5/market/tickers
+params: category=linear, symbol={COIN}USDT
+
+OKX:
+GET https://www.okx.com/api/v5/rubik/stat/taker-volume
+params: ccy={COIN}, instType=CONTRACTS, period=1H
+
+Bitget:
+GET https://api.bitget.com/api/v2/mix/market/buy-sell-volume
+params: symbol={COIN}USDT, productType=USDT-FUTURES,
+        period=1h, limit=1
+
+Gate.io:
+GET https://api.gateio.ws/api/v4/futures/usdt/stats
+params: contract={COIN}_USDT, interval=1h, limit=1
+
+## WEIGHTED AVERAGE CALCULATION
+
+def weighted_average(values, weights):
+    available = [(v,w) for v,w in 
+                 zip(values,weights) if v is not None]
+    if not available: return None
+    total_weight = sum(w for _,w in available)
+    return sum(v*w for v,w in available) / total_weight
+
+## FALLBACK WEIGHTS (if exchange down)
+If Binance down:
+  Bybit=0.40, OKX=0.30, Bitget=0.20, Gate=0.10
+  Warning: "⚠ Binance down, akurasi berkurang signifikan"
+
+If Bybit down:
+  Binance=0.56, OKX=0.17, Bitget=0.11, Gate=0.06
+  (redistribute proportionally)
+
+If OKX down:
+  Binance=0.59, Bybit=0.24, Bitget=0.12, Gate=0.06
+
+If Bitget down:
+  Binance=0.56, Bybit=0.22, OKX=0.17, Gate=0.06
+
+If Gate down:
+  Binance=0.53, Bybit=0.21, OKX=0.16, Bitget=0.11
+
+## DISPLAY ON SIGNAL CARD
+"Data: BN(50%) · BY(20%) · OKX(15%) · BG(10%) · GT(5%)"
+
+Expand/hover shows per-exchange breakdown:
+┌─────────────────────────────────────┐
+│ Funding Rate per Exchange           │
+│ Binance : -0.0100%  (bobot 50%)    │
+│ Bybit   : -0.0350%  (bobot 20%)    │
+│ OKX     : -0.0200%  (bobot 15%)    │
+│ Bitget  : -0.0180%  (bobot 10%)    │
+│ Gate.io : -0.0150%  (bobot 5%)     │
+│ ─────────────────────────────────  │
+│ Weighted AVG: -0.0188%             │
+└─────────────────────────────────────┘
+
+## API MONITOR PAGE
+Show status per exchange:
+Binance Futures : 🟢/🔴 online/down
+Bybit           : 🟢/🔴
+OKX             : 🟢/🔴
+Bitget          : 🟢/🔴
+Gate.io         : 🟢/🔴
+Blockchair      : 🟢/🔴
+DeFiLlama       : 🟢/🔴
+Mempool         : 🟢/🔴
+CoinGecko       : 🟢/🔴
+Fear & Greed    : 🟢/🔴
+Claude API      : 🟢/🔴
+
+## TIMEOUT & ERROR HANDLING
+Each API call: 5 second timeout
+If timeout or error: value = None (excluded from average)
+If all 5 exchanges fail for a metric:
+  score for that metric = 0 (neutral)
+  show: "⚠ Data [metrik] tidak tersedia dari semua exchange"
+
+Remove all CoinGlass references.
+All text Bahasa Indonesia.

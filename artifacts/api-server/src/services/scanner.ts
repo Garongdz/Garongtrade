@@ -18,7 +18,6 @@ const COIN_SYMBOLS: Record<ScanCoin, string> = {
   ARB: "ARBUSDT", OP: "OPUSDT", LINK: "LINKUSDT", DOGE: "DOGEUSDT",
 };
 const BINANCE_SPOT = "https://api.binance.com/api/v3";
-const BINANCE_FUT = "https://fapi.binance.com";
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 export interface ScanSettings {
@@ -50,8 +49,9 @@ export const apiUsage = {
 };
 export const apiStatus: Record<string, "online"|"down"|"unknown"> = {
   binanceSpot: "unknown", binanceFutures: "unknown",
+  bybit: "unknown", okx: "unknown", bitget: "unknown", gateio: "unknown",
   blockchair: "unknown", defillama: "unknown",
-  mempool: "unknown", coingecko: "unknown", fearGreed: "unknown",
+  mempool: "unknown", coingecko: "unknown", fearGreed: "unknown", claude: "unknown",
 };
 
 // Reset daily counters at midnight
@@ -78,7 +78,7 @@ export function setPriceGetter(fn: PriceGetter) { _priceGetter = fn; }
 // ── Shared data caches ────────────────────────────────────────────────────────
 interface OnChainData { txVolumeChange: number; mempoolCount: number; stablecoinChange24h: number; tvlChange24h: number; }
 interface MacroData { fearGreed: number; btcDom: number; btcDomPrev: number; }
-interface LayerResult { score: number; maxPossible: number; details: Record<string, number|string>; warnings: string[]; }
+interface LayerResult { score: number; maxPossible: number; details: Record<string, any>; warnings: string[]; }
 
 let onchainCache: { data: OnChainData; at: number } | null = null;
 let macroCache: { data: MacroData; at: number } | null = null;
@@ -90,10 +90,171 @@ export let newsSentiment = { bullish: 0, bearish: 0 };
 export function setNewsSentiment(b: number, r: number) { newsSentiment = { bullish: b, bearish: r }; }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-async function safeFetch(url: string, opts?: RequestInit): Promise<Response | null> {
+async function safeFetch(url: string, opts?: RequestInit, timeoutMs = 9000): Promise<Response | null> {
   try {
-    return await fetch(url, { ...opts, signal: AbortSignal.timeout(9000), headers: { "User-Agent": "GarongSpace/1.0", ...(opts?.headers ?? {}) } });
+    return await fetch(url, { ...opts, signal: AbortSignal.timeout(timeoutMs), headers: { "User-Agent": "GarongSpace/1.0", ...(opts?.headers ?? {}) } });
   } catch { return null; }
+}
+
+// ── Exchange weights & aggregation ────────────────────────────────────────────
+const EXCH_KEYS = ["binance","bybit","okx","bitget","gate"] as const;
+type ExchKey = typeof EXCH_KEYS[number];
+const EXCH_BASE_W: Record<ExchKey, number> = { binance:0.50, bybit:0.20, okx:0.15, bitget:0.10, gate:0.05 };
+type ExchVals = Record<ExchKey, number|null>;
+
+function weightedAvgExch(vals: ExchVals): { avg: number|null; effW: Record<ExchKey, number> } {
+  const avail = EXCH_KEYS.filter(k => vals[k] !== null);
+  const effW = Object.fromEntries(EXCH_KEYS.map(k => [k, 0])) as Record<ExchKey, number>;
+  if (!avail.length) return { avg: null, effW };
+  const total = avail.reduce((s, k) => s + EXCH_BASE_W[k], 0);
+  avail.forEach(k => effW[k] = EXCH_BASE_W[k] / total);
+  const avg = avail.reduce((s, k) => s + (vals[k]!) * effW[k], 0);
+  return { avg, effW };
+}
+
+function fmtContrib(effW: Record<ExchKey, number>): string {
+  const m: Record<ExchKey, string> = { binance:"BN", bybit:"BY", okx:"OKX", bitget:"BG", gate:"GT" };
+  return EXCH_KEYS.filter(k => effW[k] > 0).map(k => `${m[k]}(${Math.round(effW[k]*100)}%)`).join(" · ");
+}
+
+// ── Per-exchange fetch helpers ─────────────────────────────────────────────────
+const BF = "https://fapi.binance.com";
+
+async function fetchFundingRates(symbol: string, coin: string): Promise<ExchVals> {
+  const [bn, by, ox, bg, gt] = await Promise.all([
+    safeFetch(`${BF}/fapi/v1/fundingRate?symbol=${symbol}&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) { apiStatus.binanceFutures = "down"; return null; }
+      apiStatus.binanceFutures = "online";
+      const j = await r.json() as any[]; return j?.[0] ? parseFloat(j[0].fundingRate)*100 : null;
+    }),
+    safeFetch(`https://api.bybit.com/v5/market/funding/history?category=linear&symbol=${symbol}&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) { apiStatus.bybit = "down"; return null; }
+      apiStatus.bybit = "online";
+      const j = await r.json() as any; const rate = j?.result?.list?.[0]?.fundingRate;
+      return rate ? parseFloat(rate)*100 : null;
+    }),
+    safeFetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${coin}-USDT-SWAP`, {}, 5000).then(async r => {
+      if (!r?.ok) { apiStatus.okx = "down"; return null; }
+      apiStatus.okx = "online";
+      const j = await r.json() as any; const rate = j?.data?.[0]?.fundingRate;
+      return rate ? parseFloat(rate)*100 : null;
+    }),
+    safeFetch(`https://api.bitget.com/api/v2/mix/market/current-fund-rate?symbol=${symbol}&productType=USDT-FUTURES`, {}, 5000).then(async r => {
+      if (!r?.ok) { apiStatus.bitget = "down"; return null; }
+      apiStatus.bitget = "online";
+      const j = await r.json() as any; const rate = j?.data?.[0]?.fundingRate;
+      return rate ? parseFloat(rate)*100 : null;
+    }),
+    safeFetch(`https://api.gateio.ws/api/v4/futures/usdt/contracts/${coin}_USDT`, {}, 5000).then(async r => {
+      if (!r?.ok) { apiStatus.gateio = "down"; return null; }
+      apiStatus.gateio = "online";
+      const j = await r.json() as any; return j?.funding_rate ? parseFloat(j.funding_rate)*100 : null;
+    }),
+  ]);
+  return { binance:bn, bybit:by, okx:ox, bitget:bg, gate:gt };
+}
+
+async function fetchOIChange(symbol: string, coin: string): Promise<ExchVals> {
+  const [bn, by, ox, gt] = await Promise.all([
+    safeFetch(`${BF}/futures/data/openInterestHist?symbol=${symbol}&period=4h&limit=2`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[];
+      if (j.length < 2) return null;
+      const cur = +j[1].sumOpenInterestValue, prev = +j[0].sumOpenInterestValue;
+      return prev > 0 ? (cur-prev)/prev*100 : null;
+    }),
+    safeFetch(`https://api.bybit.com/v5/market/open-interest?category=linear&symbol=${symbol}&intervalTime=4h&limit=2`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const list = j?.result?.list;
+      if (!list || list.length < 2) return null;
+      const cur = +list[0].openInterest, prev = +list[1].openInterest;
+      return prev > 0 ? (cur-prev)/prev*100 : null;
+    }),
+    safeFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${coin}&period=4H`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const data = j?.data;
+      if (!data || data.length < 2) return null;
+      const cur = +data[data.length-1][2], prev = +data[data.length-2][2];
+      return prev > 0 ? (cur-prev)/prev*100 : null;
+    }),
+    safeFetch(`https://api.gateio.ws/api/v4/futures/usdt/stats?contract=${coin}_USDT&interval=4h&limit=2`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[];
+      if (!j || j.length < 2) return null;
+      const cur = +(j[j.length-1].open_interest_usd ?? j[j.length-1].open_interest);
+      const prev = +(j[j.length-2].open_interest_usd ?? j[j.length-2].open_interest);
+      return prev > 0 ? (cur-prev)/prev*100 : null;
+    }),
+  ]);
+  return { binance:bn, bybit:by, okx:ox, bitget:null, gate:gt }; // Bitget no 4h OI history
+}
+
+async function fetchLSRatio(symbol: string, coin: string): Promise<ExchVals> {
+  const [bn, by, ox, bg, gt] = await Promise.all([
+    safeFetch(`${BF}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[]; return j?.[0] ? parseFloat(j[0].longShortRatio) : null;
+    }),
+    safeFetch(`https://api.bybit.com/v5/market/account-ratio?category=linear&symbol=${symbol}&period=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const item = j?.result?.list?.[0];
+      if (!item) return null;
+      const buyR = parseFloat(item.buyRatio), sellR = parseFloat(item.sellRatio);
+      return sellR > 0 ? buyR/sellR : null;
+    }),
+    safeFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${coin}&period=1H`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const data = j?.data;
+      if (!data?.length) return null;
+      return parseFloat(data[data.length-1][1]);
+    }),
+    safeFetch(`https://api.bitget.com/api/v2/mix/market/account-long-short-ratio?symbol=${symbol}&productType=USDT-FUTURES&period=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const item = j?.data?.[0];
+      if (!item) return null;
+      // ratio field names vary
+      const ratio = item.longShortRatio ?? (item.longRatio && item.shortRatio ? parseFloat(item.longRatio)/parseFloat(item.shortRatio) : null);
+      return ratio ? parseFloat(ratio) : null;
+    }),
+    safeFetch(`https://api.gateio.ws/api/v4/futures/usdt/stats?contract=${coin}_USDT&interval=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[];
+      return j?.[0]?.lsr_account ? parseFloat(j[0].lsr_account) : null;
+    }),
+  ]);
+  return { binance:bn, bybit:by, okx:ox, bitget:bg, gate:gt };
+}
+
+async function fetchTakerBuyFrac(symbol: string, coin: string): Promise<ExchVals> {
+  const [bn, ox, bg, gt] = await Promise.all([
+    safeFetch(`${BF}/futures/data/takerlongshortRatio?symbol=${symbol}&period=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[]; const bsr = j?.[0] ? parseFloat(j[0].buySellRatio) : null;
+      return bsr !== null ? bsr/(1+bsr) : null;
+    }),
+    safeFetch(`https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=${coin}&instType=CONTRACTS&period=1H`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const data = j?.data;
+      if (!data?.length) return null;
+      const last = data[data.length-1]; const sell = +last[1], buy = +last[2];
+      return (buy+sell) > 0 ? buy/(buy+sell) : null;
+    }),
+    safeFetch(`https://api.bitget.com/api/v2/mix/market/buy-sell-volume?symbol=${symbol}&productType=USDT-FUTURES&period=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any; const item = j?.data?.[0];
+      if (!item) return null;
+      const buy = +(item.buyVolume??0), sell = +(item.sellVolume??0);
+      return (buy+sell) > 0 ? buy/(buy+sell) : null;
+    }),
+    safeFetch(`https://api.gateio.ws/api/v4/futures/usdt/stats?contract=${coin}_USDT&interval=1h&limit=1`, {}, 5000).then(async r => {
+      if (!r?.ok) return null;
+      const j = await r.json() as any[];
+      const lsrt = j?.[0]?.lsr_taker ? parseFloat(j[0].lsr_taker) : null;
+      return lsrt !== null ? lsrt/(1+lsrt) : null;
+    }),
+  ]);
+  // Bybit tickers don't expose buy/sell taker ratio
+  return { binance:bn, bybit:null, okx:ox, bitget:bg, gate:gt };
 }
 
 interface Candles { opens: number[]; highs: number[]; lows: number[]; closes: number[]; }
@@ -162,68 +323,64 @@ async function layerTechnical(symbol: string, price: number): Promise<LayerResul
   return { score: Math.max(-2, Math.min(2, sRsi + sSr)), maxPossible: 2, details: d, warnings: w };
 }
 
-// ── LAYER 2: DERIVATIVES ──────────────────────────────────────────────────────
+// ── LAYER 2: DERIVATIVES (Multi-Exchange Aggregator) ─────────────────────────
 async function layerDerivatives(_coin: string, symbol: string, _price: number, priceChange4h: number): Promise<LayerResult> {
-  const w: string[] = [], d: Record<string, number|string> = {};
+  const w: string[] = [], d: Record<string, any> = {};
+  const coin = symbol.replace("USDT", "");
 
-  // ── Funding rate (Binance Futures) ────────────────────────────────────────
-  const fundRes = await safeFetch(`${BINANCE_FUT}/fapi/v1/fundingRate?symbol=${symbol}&limit=1`);
-  if (!fundRes?.ok) {
-    apiStatus.binanceFutures = "down";
-    w.push("⚠ Binance Futures tidak tersedia, Derivatives dilewati");
-    return { score: 0, maxPossible: 0, details: { fundingRate: 0, oiChange: 0, lsRatio: 0, takerBuyFrac: 0 }, warnings: w };
+  // Fetch all 4 metrics from all 5 exchanges in parallel
+  const [fundVals, oiVals, lsVals, takerVals] = await Promise.all([
+    fetchFundingRates(symbol, coin),
+    fetchOIChange(symbol, coin),
+    fetchLSRatio(symbol, coin),
+    fetchTakerBuyFrac(symbol, coin),
+  ]);
+
+  // If no exchange returned funding data → skip derivatives
+  const { avg: funding, effW: fundEffW } = weightedAvgExch(fundVals);
+  if (funding === null) {
+    w.push("⚠ Semua exchange Futures tidak tersedia, Derivatives dilewati");
+    return { score: 0, maxPossible: 0, details: { fundingRate: 0 }, warnings: w };
   }
-  apiStatus.binanceFutures = "online";
-  const fundJson = await fundRes.json() as any[];
-  const funding = fundJson?.[0] ? parseFloat(fundJson[0].fundingRate) * 100 : 0;
+
+  // ── Funding rate score ─────────────────────────────────────────────────────
   const sFund = funding < -0.03 ? 2 : funding < -0.01 ? 1 : funding <= 0.01 ? 0 : funding <= 0.03 ? -1 : -2;
   d.fundingRate = Math.round(funding * 10000) / 10000;
+  d.fundingByExch = Object.fromEntries(
+    EXCH_KEYS.map(k => [k, fundVals[k] !== null ? Math.round(fundVals[k]!*10000)/10000 : null])
+  );
+  d.fundingEffW = Object.fromEntries(EXCH_KEYS.map(k => [k, Math.round(fundEffW[k]*100)]));
+  d.exchContrib = fmtContrib(fundEffW);
   d.scoreFunding = sFund;
 
-  // ── OI 4h change (Binance Futures) ────────────────────────────────────────
+  // ── OI change score ────────────────────────────────────────────────────────
+  const { avg: oiChange } = weightedAvgExch(oiVals);
   let scoreOi = 0;
-  const oiRes = await safeFetch(`${BINANCE_FUT}/futures/data/openInterestHist?symbol=${symbol}&period=4h&limit=2`);
-  if (oiRes?.ok) {
-    const oi = await oiRes.json() as any[];
-    if (oi.length >= 2) {
-      const cur = +oi[1].sumOpenInterestValue, prev = +oi[0].sumOpenInterestValue;
-      const oiChg = prev > 0 ? (cur - prev) / prev * 100 : 0;
-      d.oiChange = Math.round(oiChg * 100) / 100;
-      if (oiChg > 5 && priceChange4h > 0) scoreOi = 1;
-      else if (oiChg > 5 && priceChange4h < 0) scoreOi = -1;
-      else if (oiChg < -5) scoreOi = -1;
-    }
+  if (oiChange !== null) {
+    if (oiChange > 5 && priceChange4h > 0) scoreOi = 1;
+    else if (oiChange > 5 && priceChange4h < 0) scoreOi = -1;
+    else if (oiChange < -5) scoreOi = -1;
   }
+  d.oiChange = oiChange !== null ? Math.round(oiChange*100)/100 : 0;
   d.scoreOi = scoreOi;
+  if (oiChange === null) w.push("⚠ Data Open Interest tidak tersedia dari semua exchange");
 
-  // ── Long/Short ratio (Binance Futures) ────────────────────────────────────
-  let scoreLs = 0;
-  const lsRes = await safeFetch(`${BINANCE_FUT}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`);
-  if (lsRes?.ok) {
-    const ls = await lsRes.json() as any[];
-    const ratio = ls?.[0] ? parseFloat(ls[0].longShortRatio) : null;
-    if (ratio !== null) {
-      d.lsRatio = Math.round(ratio * 100) / 100;
-      if (ratio < 0.85) scoreLs = 1;
-      else if (ratio > 1.5) scoreLs = -1;
-    }
-  }
+  // ── Long/Short ratio score ────────────────────────────────────────────────
+  const { avg: lsRatio } = weightedAvgExch(lsVals);
+  const scoreLs = lsRatio === null ? 0 : lsRatio < 0.85 ? 1 : lsRatio > 1.5 ? -1 : 0;
+  d.lsRatio = lsRatio !== null ? Math.round(lsRatio*100)/100 : 0;
   d.scoreLs = scoreLs;
+  if (lsRatio === null) w.push("⚠ Data Long/Short Ratio tidak tersedia dari semua exchange");
 
-  // ── Taker buy/sell volume (Binance Futures) ───────────────────────────────
-  let scoreFlow = 0;
-  const tkRes = await safeFetch(`${BINANCE_FUT}/futures/data/takerlongshortRatio?symbol=${symbol}&period=1h&limit=1`);
-  if (tkRes?.ok) {
-    const tk = await tkRes.json() as any[];
-    const bsr = tk?.[0] ? parseFloat(tk[0].buySellRatio) : null;
-    if (bsr !== null) {
-      const buyFrac = bsr / (1 + bsr);
-      d.takerBuyFrac = Math.round(buyFrac * 1000) / 1000;
-      if (buyFrac > 0.55) scoreFlow = 1;
-      else if (buyFrac < 0.45) scoreFlow = -1;
-    }
-  }
+  // ── Taker buy fraction score ──────────────────────────────────────────────
+  const { avg: takerBuyFrac } = weightedAvgExch(takerVals);
+  const scoreFlow = takerBuyFrac === null ? 0 : takerBuyFrac > 0.55 ? 1 : takerBuyFrac < 0.45 ? -1 : 0;
+  d.takerBuyFrac = takerBuyFrac !== null ? Math.round(takerBuyFrac*1000)/1000 : 0;
   d.scoreFlow = scoreFlow;
+  if (takerBuyFrac === null) w.push("⚠ Data Taker Volume tidak tersedia dari semua exchange");
+
+  // Warning if dominant exchange is down
+  if (fundVals.binance === null) w.push("⚠ Binance Futures down, akurasi berkurang signifikan");
 
   return { score: Math.max(-5, Math.min(5, sFund + scoreOi + scoreLs + scoreFlow)), maxPossible: 5, details: d, warnings: w };
 }
@@ -373,8 +530,9 @@ async function getAIReasoning(coin: string, dir: string, ns: number, layers: any
     const p = JSON.parse(m[0]);
     apiUsage.claudeCallsToday++;
     apiUsage.claudeCallsPerCoin.set(coin, (apiUsage.claudeCallsPerCoin.get(coin) ?? 0) + 1);
+    apiStatus.claude = "online";
     return { verdict: p.verdict || "CAUTION", reason: p.reason || "", keyRisk: p.key_risk || "" };
-  } catch { return null; }
+  } catch { apiStatus.claude = "down"; return null; }
 }
 
 // ── SCAN SINGLE COIN ──────────────────────────────────────────────────────────
