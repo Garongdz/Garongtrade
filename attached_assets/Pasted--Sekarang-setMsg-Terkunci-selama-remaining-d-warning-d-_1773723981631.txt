@@ -1,0 +1,427 @@
+// Sekarang:
+setMsg('Terkunci selama ' + remaining + 'd', 'warning');
+
+// 'd' maksudnya detik tapi tidak jelas
+// Fix:
+setMsg('Terkunci selama ' + remaining + ' detik', 'warning');
+```
+
+---
+
+## ✅ Yang Sudah Benar
+```
+✅ bcrypt untuk hash PIN — aman
+✅ JWT untuk session token — benar
+✅ httpOnly cookie — tidak bisa diakses JS
+✅ Rate limiting 3 attempts → 30 detik lock
+✅ Exempt paths di middleware sudah lengkap
+✅ API routes return 401, page routes redirect
+✅ Cookie expire 7 hari
+✅ Logout menghapus cookie dengan benar
+✅ Animasi shake, pop, success sudah benar
+✅ Disable input saat submitting (anti double-submit)
+```
+
+---
+
+## Prompt Final Yang Sudah Difix
+
+Paste ini ke Agent:
+```
+Add PIN login to protect the entire app.
+Personal use only — single PIN for owner.
+
+## INSTALL DEPENDENCIES
+pip install python-jose[cryptography] bcrypt 
+            python-multipart
+
+## REPLIT SECRETS (add manually after done)
+APP_PIN = 6 digit PIN kamu
+JWT_SECRET = random string panjang bebas
+
+## FILE: auth.py
+import bcrypt, os
+from datetime import datetime, timedelta
+from jose import jwt, JWTError
+
+JWT_SECRET = os.environ.get("JWT_SECRET", "fallback")
+APP_PIN = os.environ.get("APP_PIN", "000000")
+COOKIE_NAME = "gs_session"
+
+PIN_HASH = bcrypt.hashpw(APP_PIN.encode(), bcrypt.gensalt())
+login_attempts = {}
+
+def verify_pin(pin: str) -> bool:
+    return bcrypt.checkpw(pin.encode(), PIN_HASH)
+
+def create_session_token() -> str:
+    expire = datetime.utcnow() + timedelta(days=7)
+    return jwt.encode(
+        {"exp": expire, "type": "session"},
+        JWT_SECRET, algorithm="HS256"
+    )
+
+def verify_session_token(token: str) -> bool:
+    try:
+        jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return True
+    except JWTError:
+        return False
+
+def is_rate_limited(ip: str) -> dict:
+    now = datetime.utcnow()
+    record = login_attempts.get(ip, 
+             {"count": 0, "locked_until": None})
+    if record["locked_until"] and now < record["locked_until"]:
+        remaining = int(
+            (record["locked_until"] - now).total_seconds()
+        )
+        return {"limited": True, "remaining": remaining}
+    if record["locked_until"] and now >= record["locked_until"]:
+        login_attempts[ip] = {"count": 0, "locked_until": None}
+    return {"limited": False, "remaining": 0}
+
+def record_failed_attempt(ip: str) -> dict:
+    record = login_attempts.get(ip, 
+             {"count": 0, "locked_until": None})
+    record["count"] += 1
+    if record["count"] >= 3:
+        record["locked_until"] = (datetime.utcnow() 
+                                  + timedelta(seconds=30))
+        record["count"] = 0
+        login_attempts[ip] = record
+        return {"locked": True, "attempts_left": 0}
+    login_attempts[ip] = record
+    return {"locked": False, 
+            "attempts_left": 3 - record["count"]}
+
+## FILE: routes/login.py
+from fastapi import APIRouter, Request, Response
+from fastapi.responses import JSONResponse, HTMLResponse
+from auth import (verify_pin, create_session_token, 
+                  is_rate_limited, record_failed_attempt,
+                  COOKIE_NAME)
+
+router = APIRouter()
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page():
+    with open("static/login.html") as f:
+        return f.read()
+
+@router.post("/api/auth/login")
+async def handle_login(request: Request):
+    body = await request.json()
+    pin = body.get("pin", "")
+    ip = request.client.host
+
+    rate = is_rate_limited(ip)
+    if rate["limited"]:
+        return JSONResponse(
+            {"success": False, "locked": True, 
+             "remaining": rate["remaining"]},
+            status_code=429
+        )
+
+    if verify_pin(pin):
+        from auth import login_attempts
+        login_attempts.pop(ip, None)
+        token = create_session_token()
+        response = JSONResponse({"success": True})
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=token,
+            httponly=True,
+            max_age=7 * 24 * 60 * 60,
+            samesite="lax",
+            secure=False
+        )
+        return response
+    else:
+        result = record_failed_attempt(ip)
+        return JSONResponse(
+            {"success": False,
+             "locked": result["locked"],
+             "attempts_left": result["attempts_left"]},
+            status_code=401
+        )
+
+@router.post("/api/auth/logout")
+async def handle_logout():
+    response = JSONResponse({"success": True})
+    response.delete_cookie(COOKIE_NAME)
+    return response
+
+## FILE: middleware/auth.py
+from fastapi import Request
+from fastapi.responses import RedirectResponse, JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from auth import verify_session_token, COOKIE_NAME
+
+EXEMPT_PATHS = [
+    "/login",
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/health",
+    "/favicon.ico",
+]
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in EXEMPT_PATHS):
+            return await call_next(request)
+        token = request.cookies.get(COOKIE_NAME)
+        if not token or not verify_session_token(token):
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    {"error": "Unauthorized"}, 
+                    status_code=401
+                )
+            return RedirectResponse(url="/login")
+        return await call_next(request)
+
+## FILE: main.py — UPDATE REGISTRATION ORDER
+# CRITICAL: login router MUST be registered BEFORE
+# static file mount, otherwise /login route 
+# gets swallowed by frontend router
+
+from routes.login import router as login_router
+from middleware.auth import AuthMiddleware
+
+app.add_middleware(AuthMiddleware)
+app.include_router(login_router)
+# ... other routers ...
+app.mount("/", StaticFiles(...), name="static")  # LAST
+
+## FILE: static/login.html
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Garong'Space — Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0B0E11;min-height:100vh;display:flex;
+     align-items:center;justify-content:center;
+     font-family:-apple-system,sans-serif;}
+.card{background:#181A20;border:1px solid #2B3139;
+      border-radius:16px;padding:40px 36px;
+      width:340px;text-align:center;}
+.logo{display:flex;align-items:center;
+      justify-content:center;gap:10px;margin-bottom:8px;}
+.logo-box{background:#F0B90B;border-radius:8px;
+          width:36px;height:36px;display:flex;
+          align-items:center;justify-content:center;
+          font-size:16px;font-weight:800;color:#000;}
+.logo-text{font-size:20px;font-weight:700;color:#EAECEF;}
+.logo-text span{color:#F0B90B;}
+.subtitle{font-size:12px;color:#848E9C;
+          margin-bottom:32px;letter-spacing:.3px;}
+.dots{display:flex;justify-content:center;
+      gap:14px;margin-bottom:28px;}
+.dot{width:14px;height:14px;border-radius:50%;
+     border:2px solid #2B3139;background:transparent;
+     transition:all .15s;}
+.dot.filled{background:#F0B90B;border-color:#F0B90B;
+            transform:scale(1.1);}
+.dot.error{background:#F6465D;border-color:#F6465D;}
+.dot.success{background:#0ECB81;border-color:#0ECB81;}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);
+        gap:10px;margin-bottom:20px;}
+.num-btn{background:#1E2329;border:1px solid #2B3139;
+         border-radius:50%;width:64px;height:64px;
+         font-size:20px;font-weight:500;color:#EAECEF;
+         cursor:pointer;margin:0 auto;display:flex;
+         align-items:center;justify-content:center;
+         transition:all .1s;user-select:none;}
+.num-btn:hover{background:#2B3139;}
+.num-btn:active{transform:scale(0.92);background:#363C46;}
+.num-btn.backspace{font-size:18px;color:#848E9C;}
+.num-btn.empty{visibility:hidden;}
+.msg{font-size:12px;height:18px;
+     transition:all .2s;margin-bottom:16px;}
+.msg.error{color:#F6465D;}
+.msg.success{color:#0ECB81;}
+.msg.warning{color:#F0B90B;}
+.footer{font-size:11px;color:#444;margin-top:8px;}
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  15%{transform:translateX(-8px)}
+  30%{transform:translateX(8px)}
+  45%{transform:translateX(-6px)}
+  60%{transform:translateX(6px)}
+  75%{transform:translateX(-3px)}
+  90%{transform:translateX(3px)}
+}
+@keyframes popIn{
+  0%{transform:scale(0.6);opacity:0}
+  70%{transform:scale(1.2)}
+  100%{transform:scale(1.1);opacity:1}
+}
+.shake{animation:shake .5s ease;}
+.pop{animation:popIn .2s ease;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-box">G</div>
+    <div class="logo-text">Garong<span>'Space</span></div>
+  </div>
+  <div class="subtitle">Trading Intelligence Platform</div>
+  <div class="dots" id="dots">
+    <div class="dot" id="d0"></div>
+    <div class="dot" id="d1"></div>
+    <div class="dot" id="d2"></div>
+    <div class="dot" id="d3"></div>
+    <div class="dot" id="d4"></div>
+    <div class="dot" id="d5"></div>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="numpad">
+    <button class="num-btn" data-val="1">1</button>
+    <button class="num-btn" data-val="2">2</button>
+    <button class="num-btn" data-val="3">3</button>
+    <button class="num-btn" data-val="4">4</button>
+    <button class="num-btn" data-val="5">5</button>
+    <button class="num-btn" data-val="6">6</button>
+    <button class="num-btn" data-val="7">7</button>
+    <button class="num-btn" data-val="8">8</button>
+    <button class="num-btn" data-val="9">9</button>
+    <button class="num-btn empty" aria-hidden="true"></button>
+    <button class="num-btn" data-val="0">0</button>
+    <button class="num-btn backspace" data-val="back">⌫</button>
+  </div>
+  <div class="footer">Platform ini dilindungi akses pribadi</div>
+</div>
+
+<script>
+(function() {
+  var pin = '';
+  var locked = false;
+  var submitting = false;
+
+  function updateDots(state) {
+    for (var i = 0; i < 6; i++) {
+      var dot = document.getElementById('d' + i);
+      dot.className = 'dot';
+      if (state === 'error' && i < pin.length) {
+        dot.classList.add('error');
+      } else if (state === 'success') {
+        dot.classList.add('success');
+      } else if (i < pin.length) {
+        dot.classList.add('filled');
+        dot.classList.add('pop');
+      }
+    }
+  }
+
+  function setMsg(text, type) {
+    var el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = 'msg ' + (type || '');
+  }
+
+  function shake() {
+    var el = document.getElementById('dots');
+    el.classList.remove('shake');
+    void el.offsetWidth;
+    el.classList.add('shake');
+  }
+
+  function pressNum(num) {
+    if (locked || submitting || pin.length >= 6) return;
+    pin += num;
+    updateDots();
+    if (pin.length === 6) submitPin();
+  }
+
+  function backspace() {
+    if (locked || submitting) return;
+    pin = pin.slice(0, -1);
+    updateDots();
+    setMsg('');
+  }
+
+  function submitPin() {
+    submitting = true;
+    fetch('/api/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({pin: pin})
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (data.success) {
+        updateDots('success');
+        setMsg('Selamat datang!', 'success');
+        setTimeout(function() {
+          window.location.href = '/';
+        }, 800);
+      } else if (data.locked) {
+        locked = true;
+        updateDots('error');
+        shake();
+        var remaining = data.remaining;
+        var timer = setInterval(function() {
+          setMsg('Terkunci selama ' + remaining 
+                 + ' detik', 'warning');
+          remaining--;
+          if (remaining < 0) {
+            clearInterval(timer);
+            locked = false;
+            pin = '';
+            updateDots();
+            setMsg('');
+          }
+        }, 1000);
+      } else {
+        updateDots('error');
+        shake();
+        var left = data.attempts_left;
+        if (left === 1) {
+          setMsg('PIN salah — 1 percobaan tersisa', 'error');
+        } else {
+          setMsg('PIN salah, coba lagi', 'error');
+        }
+        setTimeout(function() {
+          pin = '';
+          updateDots();
+        }, 600);
+      }
+      submitting = false;
+    })
+    .catch(function() {
+      setMsg('Koneksi gagal, coba lagi', 'error');
+      pin = '';
+      updateDots();
+      submitting = false;
+    });
+  }
+
+  document.querySelectorAll('.num-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var val = this.getAttribute('data-val');
+      if (!val) return;
+      if (val === 'back') backspace();
+      else pressNum(val);
+    });
+  });
+})();
+</script>
+</body>
+</html>
+
+## NAVBAR LOGOUT BUTTON
+Add logout button at far right of navbar.
+Small icon button, no text label.
+Icon: door/exit symbol or "↩"
+
+On click:
+1. Show browser confirm dialog:
+   "Keluar dari Garong'Space?"
+2. If confirmed:
+   fetch('/api/auth/logout', {method: 'POST'})
+   .then(() => window.location.href = '/login')
