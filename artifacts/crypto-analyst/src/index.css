@@ -122,6 +122,16 @@ html.light {
 }
 .rank-flash { animation: flash-rank 1.2s ease-out; }
 
+@keyframes dot-blink {
+  0%, 80%, 100% { opacity: 0.15; }
+  40%            { opacity: 1; }
+}
+.scanning-dot {
+  animation: dot-blink 1.4s ease-in-out infinite;
+}
+.scanning-dot:nth-child(2) { animation-delay: 0.2s; }
+.scanning-dot:nth-child(3) { animation-delay: 0.4s; }
+
 /* ── LIVE dot pulse ───────────────────────────────────────────────────────── */
 @keyframes live-pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(14, 203, 129, 0.5); }
@@ -160,6 +170,6 @@ html.light {
   transition-timing-function: ease;
 }
 /* Exclude animations from blanket transition */
-.price-flash-up, .price-flash-down, .rank-flash, .live-pulse, .ticker-scroll {
+.price-flash-up, .price-flash-down, .rank-flash, .live-pulse, .ticker-scroll, .scanning-dot {
   transition: none;
 }

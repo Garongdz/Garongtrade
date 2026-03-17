@@ -168,10 +168,13 @@ function useTop50Coins() {
 function StatCard({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div
-      className="rounded-lg p-3.5 flex flex-col gap-2"
-      style={{ background: C.surface, border: `1px solid ${C.border}` }}
+      className="rounded-lg flex flex-col gap-3"
+      style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "16px 18px" }}
     >
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide" style={{ color: C.muted }}>
+      <div
+        className="flex items-center gap-1.5 uppercase"
+        style={{ color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.08em" }}
+      >
         {icon}
         {title}
       </div>
@@ -182,14 +185,15 @@ function StatCard({ title, icon, children }: { title: string; icon?: React.React
 
 function SignalBadge({ direction, confidence }: { direction: string | null; confidence?: number }) {
   if (!direction) return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-sm text-[11px] font-bold"
-      style={{ background: "rgba(132,142,156,0.12)", color: C.muted }}>
-      WAIT
+    <span className="inline-flex items-center gap-[3px] px-1.5 py-1 rounded-sm" style={{ color: C.muted }}>
+      <span className="scanning-dot text-[14px] leading-none font-bold">·</span>
+      <span className="scanning-dot text-[14px] leading-none font-bold">·</span>
+      <span className="scanning-dot text-[14px] leading-none font-bold">·</span>
     </span>
   );
   const isLong = direction === "LONG";
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
+    <div className="flex items-center gap-1.5 justify-end flex-wrap">
       <span
         className="inline-flex items-center px-2 py-0.5 rounded-sm text-[11px] font-bold"
         style={{
@@ -227,7 +231,7 @@ function TrendingCard({ coins }: { coins: CoinData[] | undefined }) {
           {[0,1,2].map(i => <div key={i} className="h-7 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {top3.map((coin) => {
             const sym = coin.symbol.toUpperCase();
             const meta = COIN_META[sym];
@@ -236,7 +240,7 @@ function TrendingCard({ coins }: { coins: CoinData[] | undefined }) {
             const liveChange = live?.changePercent ?? coin.price_change_percentage_24h;
             const isPos = liveChange >= 0;
             return (
-              <div key={coin.id} className="flex items-center justify-between">
+              <div key={coin.id} className="flex items-center justify-between" style={{ minHeight: 32 }}>
                 <div className="flex items-center gap-2">
                   <div
                     className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex items-center justify-center text-[10px] font-bold"
@@ -285,11 +289,11 @@ function SignalsCard() {
           <span className="text-[10px]" style={{ color: `${C.muted}80` }}>Scanner berjalan otomatis</span>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {top3.map((sig) => {
             const meta = COIN_META[sig.coin];
             return (
-              <div key={sig.coin} className="flex items-center justify-between">
+              <div key={sig.coin} className="flex items-center justify-between" style={{ minHeight: 32 }}>
                 <div className="flex items-center gap-2">
                   <div
                     className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
@@ -319,18 +323,22 @@ function FundingRateCard() {
   return (
     <StatCard title="Funding Rate" icon={<Gauge className="h-3 w-3" />}>
       {rates === undefined ? (
-        <div className="space-y-2">
-          {[0,1,2].map(i => <div key={i} className="h-7 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
+        <div className="space-y-2.5">
+          {[0,1,2].map(i => <div key={i} className="h-8 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {coins.map((coin) => {
             const rate = rates[coin];
             const isNull = rate === null || rate === undefined;
-            const isNeg = !isNull && rate < 0;
-            const isPos = !isNull && rate > 0;
+            const NEAR_ZERO = 0.0001;
+            const isNeg = !isNull && rate < -NEAR_ZERO;
+            const isPos = !isNull && rate > NEAR_ZERO;
+            const rateColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
+            const label = isNull ? "" : isNeg ? "Squeeze Fuel" : isPos ? "Overheated" : "Netral";
+            const labelColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
             return (
-              <div key={coin} className="flex items-center justify-between">
+              <div key={coin} className="flex items-center justify-between" style={{ minHeight: 32 }}>
                 <div className="flex items-center gap-2">
                   <div
                     className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
@@ -344,15 +352,12 @@ function FundingRateCard() {
                   <span className="text-[12px] font-bold" style={{ color: C.text }}>{coin}</span>
                 </div>
                 <div className="text-right">
-                  <div
-                    className="text-[12px] font-semibold font-mono"
-                    style={{ color: isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.text }}
-                  >
+                  <div className="text-[12px] font-semibold font-mono" style={{ color: rateColor }}>
                     {isNull ? "—" : `${isPos ? "+" : ""}${rate!.toFixed(4)}%`}
                   </div>
-                  {!isNull && (
-                    <div className="text-[9px]" style={{ color: C.muted }}>
-                      {isNeg ? "Squeeze potential" : isPos ? "Overheated" : "Netral"}
+                  {label && (
+                    <div className="text-[9px] font-medium" style={{ color: labelColor }}>
+                      {label}
                     </div>
                   )}
                 </div>
@@ -431,9 +436,9 @@ function FearGreedCard() {
 
 // ── Rank Change Indicator ──────────────────────────────────────────────────────
 function RankChange({ delta }: { delta: number | undefined }) {
-  if (!delta) return <span style={{ color: `${C.muted}60` }}>—</span>;
-  if (delta > 0) return <span style={{ color: C.green }}>▲</span>;
-  return <span style={{ color: C.red }}>▼</span>;
+  if (!delta) return null;
+  if (delta > 0) return <span style={{ color: C.green, fontSize: 8 }}>▲</span>;
+  return <span style={{ color: C.red, fontSize: 8 }}>▼</span>;
 }
 
 // ── Main Table Row ─────────────────────────────────────────────────────────────
@@ -475,7 +480,7 @@ function CoinRow({
       onMouseLeave={(e) => (e.currentTarget.style.background = "")}
     >
       {/* Star */}
-      <td className="pl-4 pr-2 py-3 w-8">
+      <td className="pl-4 pr-2" style={{ paddingTop: 13, paddingBottom: 13, width: 32 }}>
         <button
           onClick={(e) => onToggleWatchlist(e, coin)}
           className="transition-colors focus:outline-none"
@@ -486,15 +491,15 @@ function CoinRow({
       </td>
 
       {/* Rank */}
-      <td className="px-2 py-3 w-12 text-right hidden sm:table-cell">
+      <td className="px-2 hidden sm:table-cell text-right" style={{ paddingTop: 13, paddingBottom: 13, width: 44 }}>
         <div className="flex items-center justify-end gap-0.5">
-          <span className="text-[11px]" style={{ color: `${C.muted}80` }}>{rank}</span>
-          <span className="text-[9px] leading-none"><RankChange delta={rankDelta} /></span>
+          <span className="text-[11px] tabular-nums" style={{ color: `${C.muted}80` }}>{rank}</span>
+          <span className="text-[8px] leading-none"><RankChange delta={rankDelta} /></span>
         </div>
       </td>
 
       {/* Nama */}
-      <td className="px-3 py-3">
+      <td className="px-4" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <div className="flex items-center gap-2.5">
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 overflow-hidden"
@@ -518,33 +523,33 @@ function CoinRow({
             )}
           </div>
           <div>
-            <div className="text-[13px] font-bold" style={{ color: C.text }}>{sym}</div>
-            <div className="mt-0.5 flex items-center gap-1">
-              <span className="text-[11px] hidden sm:inline" style={{ color: C.muted }}>
-                {meta?.fullName ?? coin.name}
-              </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-bold" style={{ color: C.text }}>{sym}</span>
               {meta && (
                 <span
-                  className="text-[10px] px-1 py-px rounded inline-block"
-                  style={{ background: `${C.muted}18`, color: C.muted }}
+                  className="text-[10px] px-1.5 py-px rounded hidden sm:inline-block"
+                  style={{ background: C.border, color: C.muted, fontWeight: 500 }}
                 >
                   {meta.category}
                 </span>
               )}
+            </div>
+            <div className="text-[11px] mt-0.5 hidden sm:block" style={{ color: C.muted }}>
+              {meta?.fullName ?? coin.name}
             </div>
           </div>
         </div>
       </td>
 
       {/* Harga */}
-      <td className="px-3 py-3 text-right">
+      <td className="px-3 text-right" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <span className="text-[13px] font-semibold font-mono" style={{ color: C.text }}>
           {formatCurrency(livePrice)}
         </span>
       </td>
 
       {/* 24j */}
-      <td className="px-3 py-3 text-right">
+      <td className="px-3 text-right" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <span
           className="text-[13px] font-bold font-mono"
           style={{ color: isPos ? C.green : C.red }}
@@ -554,21 +559,21 @@ function CoinRow({
       </td>
 
       {/* Volume */}
-      <td className="px-3 py-3 text-right hidden md:table-cell">
+      <td className="px-3 text-right hidden md:table-cell" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <span className="text-[12px] font-mono" style={{ color: C.muted }}>
           ${formatCompactNumber(coin.total_volume)}
         </span>
       </td>
 
       {/* Kap Pasar */}
-      <td className="px-3 py-3 text-right hidden lg:table-cell">
+      <td className="px-3 text-right hidden lg:table-cell" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <span className="text-[12px] font-mono" style={{ color: C.muted }}>
           ${formatCompactNumber(coin.market_cap)}
         </span>
       </td>
 
       {/* Sinyal AI */}
-      <td className="px-4 py-3 text-right">
+      <td className="px-4 text-right" style={{ paddingTop: 13, paddingBottom: 13 }}>
         <SignalBadge direction={signal?.direction ?? null} confidence={signal?.confidence} />
       </td>
     </tr>
@@ -661,18 +666,23 @@ function MarketTable({
     return list;
   }, [coins, activeFilter, activeCategory, search, sortKey, sortDir, watchlistSymbols, signalMap]);
 
-  const SortTh = ({ label, sortK, className = "" }: { label: string; sortK: keyof CoinData; className?: string }) => (
-    <th
-      className={cn("px-3 py-2.5 text-right cursor-pointer select-none transition-colors hover:text-[#EAECEF]", className)}
-      style={{ color: C.muted }}
-      onClick={() => handleSort(sortK)}
-    >
-      <div className={cn("flex items-center gap-1 justify-end")}>
-        <span className="text-[11px] font-semibold">{label}</span>
-        <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
-      </div>
-    </th>
-  );
+  const SortTh = ({ label, sortK, className = "" }: { label: string; sortK: keyof CoinData; className?: string }) => {
+    const isActive = sortKey === sortK;
+    return (
+      <th
+        className={cn("px-3 py-2.5 text-right cursor-pointer select-none transition-colors hover:text-[#EAECEF]", className)}
+        style={{ color: isActive ? C.text : C.muted }}
+        onClick={() => handleSort(sortK)}
+      >
+        <div className="flex items-center gap-1 justify-end">
+          <span className="text-[11px] font-semibold">{label}</span>
+          <span className="text-[10px] leading-none" style={{ color: isActive ? C.yellow : `${C.muted}50` }}>
+            {isActive ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+          </span>
+        </div>
+      </th>
+    );
+  };
 
   if (isLoading || !coins) {
     return (
@@ -704,11 +714,12 @@ function MarketTable({
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: C.muted }} />
           <Input
             placeholder="Cari koin..."
-            className="pl-8 h-8 rounded-sm text-xs w-36 sm:w-48 focus-visible:ring-1"
+            className="pl-8 h-8 rounded-sm text-xs focus-visible:ring-1"
             style={{
               background: C.surface,
               border: `1px solid ${C.border}`,
               color: C.text,
+              width: 200,
             }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -730,11 +741,16 @@ function MarketTable({
                 #
               </th>
               <th
-                className="px-3 py-2.5 cursor-pointer select-none text-[11px] font-semibold transition-colors hover:text-[#EAECEF]"
-                style={{ color: C.muted }}
+                className="px-4 py-2.5 cursor-pointer select-none text-[11px] font-semibold transition-colors hover:text-[#EAECEF]"
+                style={{ color: sortKey === "name" ? C.text : C.muted }}
                 onClick={() => handleSort("name")}
               >
-                <div className="flex items-center gap-1">Nama <ArrowUpDown className="h-2.5 w-2.5" /></div>
+                <div className="flex items-center gap-1">
+                  Nama
+                  <span className="text-[10px]" style={{ color: sortKey === "name" ? C.yellow : `${C.muted}50` }}>
+                    {sortKey === "name" ? (sortDir === "asc" ? "↑" : "↓") : "↕"}
+                  </span>
+                </div>
               </th>
               <SortTh label="Harga" sortK="current_price" />
               <SortTh label="24j" sortK="price_change_percentage_24h" />
