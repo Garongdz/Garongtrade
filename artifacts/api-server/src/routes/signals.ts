@@ -9,6 +9,34 @@ import {
 
 const router = Router();
 
+// ── GET /api/market/funding-rates — live OKX funding rates ───────────────────
+router.get("/market/funding-rates", async (_req, res) => {
+  const OKX = "https://www.okx.com/api/v5";
+  const pairs = [
+    ["BTC", "BTC-USDT-SWAP"],
+    ["ETH", "ETH-USDT-SWAP"],
+    ["SOL", "SOL-USDT-SWAP"],
+  ] as const;
+
+  const results = await Promise.all(
+    pairs.map(async ([coin, instId]) => {
+      try {
+        const r = await fetch(`${OKX}/public/funding-rate?instId=${instId}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        const j: any = await r.json();
+        const raw = parseFloat(j?.data?.[0]?.fundingRate ?? "0");
+        const pct = isNaN(raw) ? 0 : raw * 100;
+        return [coin, pct];
+      } catch {
+        return [coin, null];
+      }
+    })
+  );
+
+  res.json(Object.fromEntries(results));
+});
+
 // ── GET /api/signals — active signals ────────────────────────────────────────
 router.get("/signals", async (_req, res) => {
   try {

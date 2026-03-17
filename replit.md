@@ -94,6 +94,7 @@ Express 5 API server. Routes live in `src/routes/` and use `@workspace/db` for p
 - `GET /signals/settings` — scanner settings; `PATCH /signals/settings`
 - `GET /signals/api-monitor` — API usage & status
 - `GET /signals/debug/:coin` — debug single coin scan (scores without saving)
+- `GET /market/funding-rates` — live BTC/ETH/SOL funding rates from OKX
 - `GET /ws/prices` (WebSocket) — real-time price stream
 
 ### Trading Signal System

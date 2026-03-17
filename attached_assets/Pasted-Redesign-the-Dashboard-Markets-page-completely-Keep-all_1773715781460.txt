@@ -1,0 +1,107 @@
+Redesign the Dashboard/Markets page completely. 
+Keep all existing real-time data and WebSocket functionality.
+Only change the visual design.
+
+## COLOR SYSTEM
+Background:     #0B0E11
+Surface:        #1E2329
+Surface hover:  #1A1D24
+Card bg:        #1E2329
+Border:         #2B3139
+Border subtle:  #1A1D24
+Text primary:   #EAECEF
+Text secondary: #848E9C
+Accent yellow:  #F0B90B
+Green:          #0ECB81
+Red:            #F6465D
+
+## NAVBAR (height 56px)
+Background #181A20, border-bottom 1px #2B3139
+Left: Logo "G" box (#F0B90B bg, black text, 28px, radius 6px)
+      + "Garong'Space" text (15px bold, 'Space in yellow)
+      + Nav links: Pasar · Watchlist · Berita · Analis AI · Sinyal
+      (13px, #848E9C default, #EAECEF active)
+Right: LIVE pill (green border, green dot, green text)
+       + "Analisis Sekarang" button (#F0B90B bg, black text)
+
+## PAGE TABS (below navbar)
+Background #181A20, border-bottom 1px #2B3139, padding 0 24px
+Tabs: Ringkasan · Data Market · Sinyal Live · Berita
+Active: #EAECEF + 2px #F0B90B bottom border
+Inactive: #848E9C
+"Sinyal Live" has count pill badge
+
+## TOP 4 CARDS (grid 4 columns, gap 10px)
+Each card: #1E2329 bg, 1px #2B3139 border, radius 8px, 
+padding 14px 16px
+
+Card 1 — Trending 24j:
+Show top 3 trending coins (name, price, 24h change)
+Each row: coin icon circle + symbol | price | % change
+
+Card 2 — Sinyal Aktif:
+Show 3 active signals (coin icon + symbol | LONG/SHORT badge | confidence %)
+LONG badge: rgba(14,203,129,.1) bg + #0ECB81 text
+SHORT badge: rgba(246,70,93,.1) bg + #F6465D text
+
+Card 3 — Funding Rate:
+Show BTC, ETH, SOL funding rates
+Negative funding = green text (squeeze potential)
+Positive funding = red text (overheated)
+
+Card 4 — Fear & Greed:
+Big number (30px bold #F0B90B) + label "Greed/Fear"
+Yesterday comparison
+Gradient bar: red → yellow → green
+White needle at current position
+Labels: Takut · Netral · Serakah
+
+## FILTER TABS
+Full width, border-bottom 1px #2B3139
+Tabs: Favorit · Semua Kripto · Spot · Futures · Sinyal AI
+Same active style as page tabs
+
+## SUB FILTER PILLS
+Horizontal scrollable row of pills
+Pills: Semua · Layer 1 · Layer 2 · DeFi · MEME · 
+       AI Token · RWA · Gaming · Solana
+Active pill: #2B3139 bg + #EAECEF text
+Inactive: #848E9C text, no bg
+
+## MAIN TABLE
+Title: "Token Teratas — Kapitalisasi Pasar" (14px bold)
+Subtitle: "Harga real-time, volume, perubahan 24j, dan sinyal AI terkini." (12px #848E9C)
+
+Column headers (11px #848E9C, with ↕ sort icons):
+Nama | Harga | 24j | Volume | Kap Pasar | Sinyal AI
+
+Each row:
+- Nama: coin circle icon (28px, colored) + 
+        bold ticker + muted full name + 
+        category tag below (11px #848E9C)
+- Harga: 13px font-weight 500
+- 24j: green if positive, red if negative, font-weight 600
+- Volume: #848E9C
+- Kap Pasar: #848E9C
+- Sinyal AI: LONG/SHORT/WAIT badge with confidence %
+  LONG = green badge · SHORT = red badge · WAIT = gray badge
+
+Row hover: background #1A1D24
+Row separator: 1px #1A1D24 between rows
+
+## COINS TO SHOW
+BTC (Layer 1), ETH (Layer 1), SOL (Layer 1), 
+BNB (Layer 1), XRP (Pembayaran), AVAX (Layer 1),
+DOGE (MEME), ARB (Layer 2), OP (Layer 2), LINK (DeFi)
+
+## COIN ICON COLORS
+BTC: #F7931A · ETH: #627EEA · SOL: #9945FF
+BNB: #F0B90B · XRP: #00A8FF · AVAX: #0ECB81
+DOGE: #F6465D · ARB: #28A0F0 · OP: #FF0420 · LINK: #2A5ADA
+
+All icon backgrounds: rgba(coinColor, 0.12)
+
+Keep existing WebSocket price updates.
+Keep existing data from CoinGecko/Binance APIs.
+Sinyal AI column shows latest signal from signal engine.
+All text in Bahasa Indonesia.
