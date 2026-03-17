@@ -1,9 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { LineChart, LayoutDashboard, Star, BellRing, Settings, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
+import TickerTape from "./TickerTape";
+import { useBinanceWS } from "@/contexts/BinanceWSContext";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const { connected } = useBinanceWS();
 
   const navItems = [
     { href: "/", label: "Markets", icon: LayoutDashboard },
@@ -17,7 +20,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-40 w-full border-b border-border bg-background">
         <div className="px-4">
           <div className="flex h-14 items-center justify-between">
-            
             {/* Logo */}
             <div className="flex items-center gap-3 mr-6">
               <div className="flex items-center justify-center">
@@ -55,6 +57,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
             {/* Right Actions */}
             <div className="flex items-center gap-4">
+              {/* LIVE indicator */}
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={cn(
+                    "h-1.5 w-1.5 rounded-full",
+                    connected
+                      ? "bg-positive live-pulse"
+                      : "bg-muted-foreground"
+                  )}
+                />
+                <span className={cn("text-[10px] font-mono-price font-semibold tracking-widest", connected ? "text-positive" : "text-muted-foreground")}>
+                  {connected ? "LIVE" : "..."}
+                </span>
+              </div>
+
               <button className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors relative">
                 <BellRing className="h-5 w-5" />
                 <span className="absolute top-0 right-0 h-1.5 w-1.5 rounded-full bg-primary"></span>
@@ -70,10 +87,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
+      {/* Ticker Tape */}
+      <TickerTape />
+
       {/* Main Content */}
-      <main className="flex-1 w-full p-0">
-        {children}
-      </main>
+      <main className="flex-1 w-full p-0">{children}</main>
     </div>
   );
 }

@@ -6,14 +6,15 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
 import Watchlist from "@/pages/Watchlist";
 import AiAnalyst from "@/pages/AiAnalyst";
+import { BinanceWSProvider } from "@/contexts/BinanceWSContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       staleTime: 1000 * 60 * 5,
-    }
-  }
+    },
+  },
 });
 
 function Router() {
@@ -31,9 +32,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
+        <BinanceWSProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+        </BinanceWSProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
