@@ -1,11 +1,13 @@
 import { type Request, type Response, type NextFunction } from "express";
 import { verifySessionToken, COOKIE_NAME } from "../auth";
 
+// ── FIX 2: Expanded exempt paths ─────────────────────────────────────────────
 const EXEMPT = [
   "/api/auth/login",
   "/api/auth/logout",
   "/api/auth/check",
   "/api/health",
+  "/api/ws/",        // WebSocket price stream
 ];
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {

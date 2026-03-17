@@ -21,11 +21,13 @@ router.post("/login", async (req: Request, res: Response) => {
   if (verifyPin(pin)) {
     clearAttempts(ip);
     const token = createSessionToken();
+    const isSecure = process.env["NODE_ENV"] === "production"
+      || !!process.env["REPLIT_DEPLOYMENT"];
     res.cookie(COOKIE_NAME, token, {
       httpOnly: true,
       maxAge: SEVEN_DAYS * 1000,
       sameSite: "lax",
-      secure: process.env["NODE_ENV"] === "production",
+      secure: isSecure,
     });
     res.json({ success: true });
   } else {
