@@ -16,6 +16,7 @@ import CoinChart from "./CoinChart";
 import { useBinanceWS } from "@/contexts/BinanceWSContext";
 import { usePriceFlash } from "@/hooks/usePriceFlash";
 import { Sparkline } from "./Sparkline";
+import { useAppSettings } from "@/contexts/AppSettingsContext";
 
 interface CryptoTableProps {
   filterWatchlistOnly?: boolean;
@@ -106,6 +107,7 @@ function CoinRow({
 export default function CryptoTable({
   filterWatchlistOnly = false,
 }: CryptoTableProps) {
+  const { t } = useAppSettings();
   const [search, setSearch] = useState("");
   const [sortConfig, setSortConfig] = useState<{
     key: keyof CryptoPrice;

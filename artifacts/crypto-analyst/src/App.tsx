@@ -7,6 +7,7 @@ import Dashboard from "@/pages/Dashboard";
 import Watchlist from "@/pages/Watchlist";
 import AiAnalyst from "@/pages/AiAnalyst";
 import { BinanceWSProvider } from "@/contexts/BinanceWSContext";
+import { AppSettingsProvider } from "@/contexts/AppSettingsContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,11 +33,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <BinanceWSProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-            <Router />
-          </WouterRouter>
-        </BinanceWSProvider>
+        <AppSettingsProvider>
+          <BinanceWSProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+              <Router />
+            </WouterRouter>
+          </BinanceWSProvider>
+        </AppSettingsProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
