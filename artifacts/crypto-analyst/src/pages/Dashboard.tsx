@@ -105,16 +105,30 @@ function useSignals() {
   });
 }
 
+interface FundingCoin {
+  avg: number | null;
+  bybit: number | null;
+  okx: number | null;
+  gate: number | null;
+  status: { bybit: boolean; okx: boolean; gate: boolean };
+}
+interface FundingRatesResponse {
+  BTC?: FundingCoin;
+  ETH?: FundingCoin;
+  SOL?: FundingCoin;
+  exchangeStatus?: { bybit: boolean; okx: boolean; gate: boolean };
+}
+
 function useFundingRates() {
   const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
   return useQuery({
     queryKey: ["funding-rates"],
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/market/funding-rates`);
-      return r.json() as Promise<Record<string, number | null>>;
+      return r.json() as Promise<FundingRatesResponse>;
     },
-    refetchInterval: 60_000,
-    staleTime: 50_000,
+    refetchInterval: 30_000,
+    staleTime: 25_000,
   });
 }
 
