@@ -29,6 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/", labelKey: "markets" },
+    { href: "/chart/BTC", labelKey: "chart" },
     { href: "/news", labelKey: "news" },
     { href: "/ai-analyst", labelKey: "aiAnalyst" },
     { href: "/signals", labelKey: "signals" },
@@ -58,7 +59,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* Navigation */}
           <nav className="flex items-center flex-1 h-full">
             {navItems.map((item) => {
-              const isActive = location === item.href;
+              const isActive = item.href.startsWith("/chart")
+                ? location.startsWith("/chart")
+                : location === item.href;
               return (
                 <Link
                   key={item.href}

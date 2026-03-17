@@ -1,0 +1,161 @@
+Add a Chart page to the app.
+
+## ROUTE
+/chart or /chart/:symbol (default BTC)
+Add "Chart" menu item in navbar between "Pasar" and "Analis AI"
+
+## LAYOUT
+Full page layout, 2 columns:
+Left: chart area (flex 1)
+Right: sidebar (260px fixed)
+
+## NAVBAR ABOVE CHART
+Height 48px, background #181A20, border-bottom 1px #2B3139
+Left side:
+- Coin selector dropdown showing current coin + logo + price
+  When changed → chart updates to new symbol
+- Current price (large, 20px bold)
+- 24h change % (green/red)
+Right side:
+- LIVE pill (green dot + text)
+- "☆ Favorit" button
+- "Analis AI" button → navigates to AI Analyst with current coin
+- "⛶ Fullscreen" button → toggles fullscreen mode
+
+## STATS BAR
+Below navbar, height 36px, background #181A20
+Show: Perubahan 24j | Tertinggi 24j | Terendah 24j | 
+      Volume 24j | Funding Rate | Open Interest | Kap Pasar
+Fetch from existing data sources (Binance spot + Bybit)
+
+## TIMEFRAME SWITCHER
+Row below stats: 1m | 5m | 15m | 1j | 4j | 1H | 1M
+Active TF: #2B3139 bg, white text
+Also show indicator toggles: MA | EMA | VOL | RSI | MACD | BB
+Active indicator: yellow border + yellow text
+
+## MAIN CHART — TradingView Lightweight Charts
+Import from CDN:
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+Setup:
+const chart = LightweightCharts.createChart(container, {
+  layout: {
+    background: { color: '#0B0E11' },
+    textColor: '#848E9C',
+  },
+  grid: {
+    vertLines: { color: '#1E2329' },
+    horzLines: { color: '#1E2329' },
+  },
+  crosshair: {
+    mode: LightweightCharts.CrosshairMode.Normal,
+  },
+  rightPriceScale: {
+    borderColor: '#2B3139',
+  },
+  timeScale: {
+    borderColor: '#2B3139',
+    timeVisible: true,
+    secondsVisible: false,
+  },
+  width: container.clientWidth,
+  height: 280,
+})
+
+Candlestick series:
+const candleSeries = chart.addCandlestickSeries({
+  upColor: '#0ECB81',
+  downColor: '#F6465D',
+  borderUpColor: '#0ECB81',
+  borderDownColor: '#F6465D',
+  wickUpColor: '#0ECB81',
+  wickDownColor: '#F6465D',
+})
+
+Fetch candle data from Binance:
+GET https://api.binance.com/api/v3/klines
+params: symbol={COIN}USDT, interval={tf}, limit=200
+Map response to: {time, open, high, low, close}
+
+MA line (when MA toggle active):
+const maSeries = chart.addLineSeries({
+  color: '#F0B90B',
+  lineWidth: 1.5,
+  priceLineVisible: false,
+})
+
+EMA line (when EMA toggle active):
+const emaSeries = chart.addLineSeries({
+  color: '#627EEA',
+  lineWidth: 1.5,
+  priceLineVisible: false,
+})
+
+## VOLUME PANEL
+Below main chart, height 80px
+chart.addHistogramSeries({
+  color: '#0ECB81',
+  priceFormat: { type: 'volume' },
+  priceScaleId: 'volume',
+  scaleMargins: { top: 0.8, bottom: 0 },
+})
+Volume bar color: green if close > open, red if close < open
+
+## RSI PANEL  
+Below volume, height 80px
+Separate chart instance, same width
+RSI line color: #9945FF
+Add dashed lines at 70 (red) and 30 (green)
+Label: "RSI (14) · {current value}"
+
+## REAL-TIME PRICE UPDATE
+Connect to Binance WebSocket for live candle updates:
+wss://stream.binance.com:9443/ws/{symbol}@kline_{interval}
+Update last candle in real-time as price moves
+
+Current price line: dashed green line at current price
+Price label on right axis: green box with current price
+
+## RIGHT SIDEBAR (260px)
+Background #181A20, border-left 1px #2B3139, padding 12px
+
+Section 1 — Sinyal AI:
+Show latest signal for current coin from signal engine
+Display: direction badge, confidence bar, 
+entry/SL/TP1/TP2, max leverage
+Button: "Analisis Ulang ↗" → triggers new analysis
+
+Section 2 — Data Derivatif:
+Funding Rate (from existing multi-exchange avg)
+Open Interest + 4h change
+Long/Short Ratio
+Taker Buy %
+
+Section 3 — Indikator:
+RSI value (colored: green <30, red >70, yellow 30-70)
+MA 20 value
+EMA 50 value  
+Support level (lowest of last 10 candles)
+Resistance level (highest of last 10 candles)
+
+## FULLSCREEN MODE
+When fullscreen button clicked:
+- Hide navbar, sidebar, all other UI
+- Chart takes full screen
+- Show floating pill: coin + price + TF switcher + exit button
+- ESC key also exits fullscreen
+
+## ANIMATIONS
+- Chart fades in on load
+- Candles appear with subtle animation
+- Price flash green/red on update (same as dashboard)
+- Sidebar slides in from right on load
+- Confidence bar animates from 0 to value
+
+## RESPONSIVE
+Chart resizes when window resizes:
+chart.resize(container.clientWidth, container.clientHeight)
+
+All text Bahasa Indonesia.
+Dark theme #0B0E11 throughout.

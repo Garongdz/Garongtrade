@@ -21,6 +21,7 @@ const translations: Record<Language, Record<string, string>> = {
   en: {
     news: "News",
     markets: "Markets",
+    chart: "Chart",
     watchlist: "Watchlist",
     aiAnalyst: "AI Analyst",
     signals: "Signals",
@@ -103,6 +104,7 @@ const translations: Record<Language, Record<string, string>> = {
   id: {
     news: "Berita",
     markets: "Pasar",
+    chart: "Chart",
     watchlist: "Watchlist",
     aiAnalyst: "Analis AI",
     signals: "Sinyal",
