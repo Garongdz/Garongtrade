@@ -187,7 +187,7 @@ export default function CryptoTable({
         <div className="relative w-full sm:w-64">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search coin or symbol..."
+            placeholder={t("searchPlaceholder")}
             className="pl-8 bg-card border-border text-foreground placeholder:text-muted-foreground h-8 rounded-sm text-xs focus-visible:ring-primary focus-visible:ring-1 focus-visible:border-primary"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
