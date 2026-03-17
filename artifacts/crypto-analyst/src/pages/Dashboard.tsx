@@ -344,8 +344,17 @@ function TopLosersCard({ coins }: { coins: CoinData[] | undefined }) {
   );
 }
 
+function getFundingLabel(avg: number | null): { text: string; color: string } {
+  if (avg === null) return { text: "—", color: C.muted };
+  if (avg > 0.02)  return { text: "Overheated",   color: "#F6465D" };
+  if (avg > 0.01)  return { text: "Bullish",       color: "#F0B90B" };
+  if (avg < -0.02) return { text: "Squeeze Fuel",  color: "#0ECB81" };
+  if (avg < -0.01) return { text: "Bearish",       color: "#90A3BF" };
+  return { text: "Normal", color: "#848E9C" };
+}
+
 function FundingRateCard({ coins: allCoins }: { coins: CoinData[] | undefined }) {
-  const { data: rates } = useFundingRates();
+  const { data: rates, dataUpdatedAt } = useFundingRates();
   const fundingCoins = ["BTC", "ETH", "SOL"] as const;
 
   const imageMap = useMemo(() => {
@@ -358,8 +367,76 @@ function FundingRateCard({ coins: allCoins }: { coins: CoinData[] | undefined })
     return m;
   }, [allCoins]);
 
+  // Countdown timer (30s)
+  const [countdown, setCountdown] = useState(30);
+  useEffect(() => {
+    setCountdown(30);
+  }, [dataUpdatedAt]);
+  useEffect(() => {
+    const id = setInterval(() => setCountdown(p => Math.max(0, p - 1)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Flash on rate change
+  const prevAvgRef = useRef<Record<string, number | null>>({});
+  const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
+  useEffect(() => {
+    if (!rates) return;
+    const newFlash: Record<string, "up" | "down"> = {};
+    for (const coin of fundingCoins) {
+      const cur = rates[coin]?.avg ?? null;
+      const prev = prevAvgRef.current[coin] ?? null;
+      if (prev !== null && cur !== null) {
+        if (cur > prev) newFlash[coin] = "up";
+        else if (cur < prev) newFlash[coin] = "down";
+      }
+      prevAvgRef.current[coin] = cur;
+    }
+    if (Object.keys(newFlash).length > 0) {
+      setFlashMap(newFlash);
+      setTimeout(() => setFlashMap({}), 700);
+    }
+  }, [rates]);
+
+  // Hover tooltip state
+  const [tooltip, setTooltip] = useState<string | null>(null);
+
+  const exStatus = rates?.exchangeStatus;
+
   return (
-    <StatCard title="Funding Rate" icon={<Gauge className="h-3 w-3" />}>
+    <div
+      className="rounded-lg flex flex-col gap-3"
+      style={{ background: C.surface, border: `1px solid ${C.border}`, padding: "16px 18px" }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div
+          className="flex items-center gap-1.5 uppercase"
+          style={{ color: C.muted, fontSize: 11, fontWeight: 600, letterSpacing: "0.08em" }}
+        >
+          <Gauge className="h-3 w-3" />
+          Funding Rate
+          {/* Exchange status dots */}
+          <div className="flex items-center gap-1 ml-1">
+            {([["BY", exStatus?.bybit], ["OKX", exStatus?.okx], ["GT", exStatus?.gate]] as [string, boolean | undefined][]).map(
+              ([label, online]) => (
+                <span key={label} className="flex items-center gap-0.5" title={`${label}: ${online ? "Online" : "Down"}`}>
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: online === undefined ? C.border : online ? "#0ECB81" : "#F6465D" }}
+                  />
+                </span>
+              )
+            )}
+          </div>
+        </div>
+        {/* Countdown */}
+        <span style={{ color: `${C.muted}80`, fontSize: 10 }}>
+          {countdown}d
+        </span>
+      </div>
+
+      {/* Content */}
       {rates === undefined ? (
         <div className="space-y-2.5">
           {[0,1,2].map(i => <div key={i} className="h-8 rounded animate-pulse" style={{ background: C.surfaceH }} />)}
@@ -367,17 +444,48 @@ function FundingRateCard({ coins: allCoins }: { coins: CoinData[] | undefined })
       ) : (
         <div className="space-y-2.5">
           {fundingCoins.map((coin) => {
-            const rate = rates[coin];
-            const isNull = rate === null || rate === undefined;
-            const NEAR_ZERO = 0.0001;
-            const isNeg = !isNull && rate < -NEAR_ZERO;
-            const isPos = !isNull && rate > NEAR_ZERO;
-            const rateColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
-            const label = isNull ? "" : isNeg ? "Squeeze Fuel" : isPos ? "Overheated" : "Netral";
-            const labelColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
+            const coinData = rates[coin];
+            const avg = coinData?.avg ?? null;
+            const { text: labelText, color: labelColor } = getFundingLabel(avg);
+            const isPos = avg !== null && avg > 0;
             const imgSrc = imageMap[coin];
+            const flashDir = flashMap[coin];
+            const rateColor = labelColor;
+
+            const tooltipLines = coinData ? [
+              `BY: ${coinData.bybit !== null ? `${coinData.bybit > 0 ? "+" : ""}${coinData.bybit.toFixed(4)}%` : "N/A"}`,
+              `OKX: ${coinData.okx  !== null ? `${coinData.okx  > 0 ? "+" : ""}${coinData.okx.toFixed(4)}%`  : "N/A"}`,
+              `GT: ${coinData.gate  !== null ? `${coinData.gate  > 0 ? "+" : ""}${coinData.gate.toFixed(4)}%`  : "N/A"}`,
+              `Rata-rata: ${avg !== null ? `${avg > 0 ? "+" : ""}${avg.toFixed(4)}%` : "N/A"}`,
+            ].join(" · ") : "";
+
             return (
-              <div key={coin} className="flex items-center justify-between" style={{ minHeight: 32 }}>
+              <div
+                key={coin}
+                className="flex items-center justify-between relative cursor-default"
+                style={{ minHeight: 32 }}
+                onMouseEnter={() => setTooltip(coin)}
+                onMouseLeave={() => setTooltip(null)}
+              >
+                {/* Tooltip */}
+                {tooltip === coin && (
+                  <div
+                    className="absolute right-0 z-50 rounded px-2 py-1.5 whitespace-nowrap pointer-events-none"
+                    style={{
+                      bottom: "calc(100% + 4px)",
+                      background: "#13161B",
+                      border: `1px solid ${C.border}`,
+                      fontSize: 10,
+                      color: C.muted,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {tooltipLines.split(" · ").map((line, i) => (
+                      <div key={i} style={{ color: i === 3 ? C.text : C.muted }}>{line}</div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   <div
                     className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex items-center justify-center text-[10px] font-bold"
@@ -387,34 +495,33 @@ function FundingRateCard({ coins: allCoins }: { coins: CoinData[] | undefined })
                     }}
                   >
                     {imgSrc ? (
-                      <img
-                        src={imgSrc}
-                        alt={coin}
-                        width={24}
-                        height={24}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
+                      <img src={imgSrc} alt={coin} width={24} height={24} className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     ) : coin[0]}
                   </div>
                   <span className="text-[12px] font-bold" style={{ color: C.text }}>{coin}</span>
                 </div>
-                <div className="text-right">
-                  <div className="text-[12px] font-semibold font-mono" style={{ color: rateColor }}>
-                    {isNull ? "—" : `${isPos ? "+" : ""}${rate!.toFixed(4)}%`}
-                  </div>
-                  {label && (
-                    <div className="text-[9px] font-medium" style={{ color: labelColor }}>
-                      {label}
-                    </div>
+
+                <div
+                  className={cn(
+                    "text-right",
+                    flashDir === "up"   && "price-flash-up",
+                    flashDir === "down" && "price-flash-down"
                   )}
+                >
+                  <div className="text-[12px] font-semibold font-mono" style={{ color: rateColor }}>
+                    {avg === null ? "—" : `${isPos ? "+" : ""}${avg.toFixed(4)}%`}
+                  </div>
+                  <div className="text-[9px] font-medium" style={{ color: labelColor }}>
+                    {labelText}
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
       )}
-    </StatCard>
+    </div>
   );
 }
 
