@@ -38,7 +38,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <LineChart className="h-6 w-6 text-primary" />
               </div>
               <span className="font-sans text-xl font-bold tracking-tight text-primary hidden sm:block">
-                BINANCE<span className="text-foreground"> FUTURES</span>
+                Garong<span className="text-foreground">'Space</span>
               </span>
             </div>
 
