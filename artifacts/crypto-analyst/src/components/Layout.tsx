@@ -29,7 +29,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/", labelKey: "markets" },
-    { href: "/watchlist", labelKey: "watchlist" },
     { href: "/news", labelKey: "news" },
     { href: "/ai-analyst", labelKey: "aiAnalyst" },
     { href: "/signals", labelKey: "signals" },

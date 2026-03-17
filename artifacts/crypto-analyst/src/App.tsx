@@ -4,7 +4,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/Dashboard";
-import Watchlist from "@/pages/Watchlist";
 import News from "@/pages/News";
 import AiAnalyst from "@/pages/AiAnalyst";
 import Signals from "@/pages/Signals";
@@ -24,7 +23,6 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/watchlist" component={Watchlist} />
       <Route path="/news" component={News} />
       <Route path="/ai-analyst" component={AiAnalyst} />
       <Route path="/signals" component={Signals} />

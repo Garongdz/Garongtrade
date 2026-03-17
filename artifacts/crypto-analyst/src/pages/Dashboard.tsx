@@ -330,9 +330,19 @@ function TopLosersCard({ coins }: { coins: CoinData[] | undefined }) {
   );
 }
 
-function FundingRateCard() {
+function FundingRateCard({ coins: allCoins }: { coins: CoinData[] | undefined }) {
   const { data: rates } = useFundingRates();
-  const coins = ["BTC", "ETH", "SOL"] as const;
+  const fundingCoins = ["BTC", "ETH", "SOL"] as const;
+
+  const imageMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    if (!allCoins) return m;
+    for (const c of allCoins) {
+      const sym = c.symbol.toUpperCase();
+      if (c.image) m[sym] = c.image;
+    }
+    return m;
+  }, [allCoins]);
 
   return (
     <StatCard title="Funding Rate" icon={<Gauge className="h-3 w-3" />}>
@@ -342,7 +352,7 @@ function FundingRateCard() {
         </div>
       ) : (
         <div className="space-y-2.5">
-          {coins.map((coin) => {
+          {fundingCoins.map((coin) => {
             const rate = rates[coin];
             const isNull = rate === null || rate === undefined;
             const NEAR_ZERO = 0.0001;
@@ -351,17 +361,27 @@ function FundingRateCard() {
             const rateColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
             const label = isNull ? "" : isNeg ? "Squeeze Fuel" : isPos ? "Overheated" : "Netral";
             const labelColor = isNull ? C.muted : isNeg ? C.green : isPos ? C.red : C.muted;
+            const imgSrc = imageMap[coin];
             return (
               <div key={coin} className="flex items-center justify-between" style={{ minHeight: 32 }}>
                 <div className="flex items-center gap-2">
                   <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                    className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex items-center justify-center text-[10px] font-bold"
                     style={{
                       background: `${COIN_META[coin]?.color ?? C.muted}20`,
                       color: COIN_META[coin]?.color ?? C.muted,
                     }}
                   >
-                    {coin[0]}
+                    {imgSrc ? (
+                      <img
+                        src={imgSrc}
+                        alt={coin}
+                        width={24}
+                        height={24}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                    ) : coin[0]}
                   </div>
                   <span className="text-[12px] font-bold" style={{ color: C.text }}>{coin}</span>
                 </div>
@@ -886,7 +906,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5 p-3">
               <TrendingCard coins={coins} />
               <TopLosersCard coins={coins} />
-              <FundingRateCard />
+              <FundingRateCard coins={coins} />
               <FearGreedCard />
             </div>
 
