@@ -3,6 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import app from "./app";
 import { startScanner, setNewsSentiment } from "./services/scanner";
 import { newsCache } from "./routes/news";
+import { updatePriceStore } from "./services/priceStore";
 
 const rawPort = process.env["PORT"];
 if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");

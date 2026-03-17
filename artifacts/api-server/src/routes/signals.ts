@@ -9,7 +9,31 @@ import {
 
 const router = Router();
 
-// ── GET /api/market/top50 — CoinGecko top 50 by market cap ──────────────────
+// ── GET /api/market/top50 — CryptoCompare top 100 by market cap ─────────────
+const CC_BASE = "https://min-api.cryptocompare.com";
+const CC_IMG  = "https://www.cryptocompare.com";
+
+const TOP_COINS = [
+  "BTC","ETH","BNB","SOL","XRP","DOGE","ADA","AVAX","TRX","DOT",
+  "LINK","MATIC","LTC","SHIB","UNI","ATOM","XLM","BCH","ALGO","ICP",
+  "FIL","VET","HBAR","ETC","NEAR","FTM","SAND","MANA","AXS","THETA",
+  "GRT","AAVE","MKR","XTZ","SNX","CRV","COMP","YFI","SUSHI","1INCH",
+  "ENJ","CHZ","FLOW","ZEC","DASH","XMR","EGLD","ROSE","KSM","CELO",
+];
+
+const COIN_NAMES: Record<string, string> = {
+  BTC:"Bitcoin", ETH:"Ethereum", BNB:"BNB", SOL:"Solana", XRP:"XRP",
+  DOGE:"Dogecoin", ADA:"Cardano", AVAX:"Avalanche", TRX:"TRON", DOT:"Polkadot",
+  LINK:"Chainlink", MATIC:"Polygon", LTC:"Litecoin", SHIB:"Shiba Inu", UNI:"Uniswap",
+  ATOM:"Cosmos", XLM:"Stellar", BCH:"Bitcoin Cash", ALGO:"Algorand", ICP:"Internet Computer",
+  FIL:"Filecoin", VET:"VeChain", HBAR:"Hedera", ETC:"Ethereum Classic", NEAR:"NEAR Protocol",
+  FTM:"Fantom", SAND:"The Sandbox", MANA:"Decentraland", AXS:"Axie Infinity", THETA:"Theta Network",
+  GRT:"The Graph", AAVE:"Aave", MKR:"Maker", XTZ:"Tezos", SNX:"Synthetix",
+  CRV:"Curve DAO", COMP:"Compound", YFI:"yearn.finance", SUSHI:"SushiSwap", "1INCH":"1inch",
+  ENJ:"Enjin Coin", CHZ:"Chiliz", FLOW:"Flow", ZEC:"Zcash", DASH:"Dash",
+  XMR:"Monero", EGLD:"MultiversX", ROSE:"Oasis Network", KSM:"Kusama", CELO:"Celo",
+};
+
 let top50Cache: { data: any[]; ts: number } | null = null;
 
 router.get("/market/top50", async (_req, res) => {
@@ -20,18 +44,46 @@ router.get("/market/top50", async (_req, res) => {
   }
 
   try {
+    const symbols = TOP_COINS.join(",");
     const r = await fetch(
-      "https://api.coingecko.com/api/v3/coins/markets" +
-      "?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false&price_change_percentage=24h",
+      `${CC_BASE}/data/pricemultifull?fsyms=${symbols}&tsyms=USD`,
       { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(9000) }
     );
-    if (!r.ok) throw new Error(`CoinGecko ${r.status}`);
-    const data = await r.json();
+    if (!r.ok) throw new Error(`CryptoCompare ${r.status}`);
+
+    const json: any = await r.json();
+    const raw = json.RAW ?? {};
+
+    const data = TOP_COINS
+      .filter((sym) => raw[sym]?.USD)
+      .map((sym, idx) => {
+        const usd = raw[sym].USD;
+        const price = usd.PRICE ?? 0;
+        const open24 = price - (usd.CHANGE24HOUR ?? 0);
+        return {
+          id: sym.toLowerCase(),
+          symbol: sym.toLowerCase(),
+          name: COIN_NAMES[sym] ?? sym,
+          current_price: price,
+          price_change_24h: usd.CHANGE24HOUR ?? 0,
+          price_change_percentage_24h: usd.CHANGEPCT24HOUR ?? 0,
+          market_cap: usd.MKTCAP ?? 0,
+          market_cap_rank: idx + 1,
+          total_volume: usd.VOLUME24HOURTO ?? 0,
+          high_24h: usd.HIGH24HOUR ?? price,
+          low_24h: usd.LOW24HOUR ?? price,
+          image: usd.IMAGEURL ? `${CC_IMG}${usd.IMAGEURL}` : "",
+          ath: usd.HIGH24HOUR ?? price,
+          ath_change_percentage: open24 > 0 ? ((price - open24) / open24) * 100 : 0,
+          circulating_supply: usd.SUPPLY ?? 0,
+        };
+      });
+
     top50Cache = { data, ts: now };
     res.setHeader("X-Cache", "MISS");
     return res.json(data);
   } catch (e: any) {
-    if (top50Cache) return res.json(top50Cache.data); // serve stale on error
+    if (top50Cache) return res.json(top50Cache.data);
     res.status(500).json({ error: e.message });
   }
 });
