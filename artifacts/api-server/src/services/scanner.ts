@@ -17,7 +17,6 @@ const COIN_SYMBOLS: Record<ScanCoin, string> = {
   BNB: "BNBUSDT", XRP: "XRPUSDT", AVAX: "AVAXUSDT",
   ARB: "ARBUSDT", OP: "OPUSDT", LINK: "LINKUSDT", DOGE: "DOGEUSDT",
 };
-const COINGLASS_COINS = new Set(["BTC","ETH","SOL","BNB","XRP"]);
 const BINANCE_SPOT = "https://api.binance.com/api/v3";
 const BINANCE_FUT = "https://fapi.binance.com";
 
@@ -45,16 +44,14 @@ export function updateScanSettings(s: Partial<ScanSettings>) {
 
 // ── API Usage / Status ────────────────────────────────────────────────────────
 export const apiUsage = {
-  coinglassMonthly: 0,
   blockchairDaily: 0,
   claudeCallsToday: 0,
   claudeCallsPerCoin: new Map<string, number>(),
 };
 export const apiStatus: Record<string, "online"|"down"|"unknown"> = {
   binanceSpot: "unknown", binanceFutures: "unknown",
-  coinglass: "unknown", blockchair: "unknown",
-  defillama: "unknown", mempool: "unknown",
-  coingecko: "unknown", fearGreed: "unknown",
+  blockchair: "unknown", defillama: "unknown",
+  mempool: "unknown", coingecko: "unknown", fearGreed: "unknown",
 };
 
 // Reset daily counters at midnight
@@ -166,39 +163,24 @@ async function layerTechnical(symbol: string, price: number): Promise<LayerResul
 }
 
 // ── LAYER 2: DERIVATIVES ──────────────────────────────────────────────────────
-async function layerDerivatives(coin: string, symbol: string, price: number, priceChange4h: number): Promise<LayerResult> {
+async function layerDerivatives(_coin: string, symbol: string, _price: number, priceChange4h: number): Promise<LayerResult> {
   const w: string[] = [], d: Record<string, number|string> = {};
 
-  // Funding rate
-  let funding: number | null = null;
-  // Try CoinGlass if key set and coin supported
-  if (COINGLASS_COINS.has(coin) && process.env.COINGLASS_API_KEY) {
-    const cg = await safeFetch(`https://open-api.coinglass.com/api/pro/v1/futures/fundingRate/list?symbol=${coin}`, {
-      headers: { "coinglassSecret": process.env.COINGLASS_API_KEY }
-    });
-    if (cg?.ok) {
-      const j = await cg.json() as any;
-      const bn = j?.data?.find?.((x: any) => x.exchangeName === "Binance");
-      funding = bn ? parseFloat(bn.currentFundingRate || "0") * 100 : null;
-      apiUsage.coinglassMonthly++;
-      apiStatus.coinglass = "online";
-    } else { apiStatus.coinglass = "down"; }
+  // ── Funding rate (Binance Futures) ────────────────────────────────────────
+  const fundRes = await safeFetch(`${BINANCE_FUT}/fapi/v1/fundingRate?symbol=${symbol}&limit=1`);
+  if (!fundRes?.ok) {
+    apiStatus.binanceFutures = "down";
+    w.push("⚠ Binance Futures tidak tersedia, Derivatives dilewati");
+    return { score: 0, maxPossible: 0, details: { fundingRate: 0, oiChange: 0, lsRatio: 0, takerBuyFrac: 0 }, warnings: w };
   }
-  // Fallback: Binance futures
-  if (funding === null) {
-    const r = await safeFetch(`${BINANCE_FUT}/fapi/v1/fundingRate?symbol=${symbol}&limit=1`);
-    if (r?.ok) {
-      const j = await r.json() as any[];
-      funding = j?.[0] ? parseFloat(j[0].fundingRate) * 100 : 0;
-      apiStatus.binanceFutures = "online";
-    } else {
-      apiStatus.binanceFutures = "down";
-      w.push("⚠ Binance Futures tidak tersedia, Derivatives dilewati");
-      return { score: 0, maxPossible: 0, details: { fundingRate: 0, oiChange: 0, lsRatio: 0, takerRatio: 0 }, warnings: w };
-    }
-  }
+  apiStatus.binanceFutures = "online";
+  const fundJson = await fundRes.json() as any[];
+  const funding = fundJson?.[0] ? parseFloat(fundJson[0].fundingRate) * 100 : 0;
+  const sFund = funding < -0.03 ? 2 : funding < -0.01 ? 1 : funding <= 0.01 ? 0 : funding <= 0.03 ? -1 : -2;
+  d.fundingRate = Math.round(funding * 10000) / 10000;
+  d.scoreFunding = sFund;
 
-  // OI change
+  // ── OI 4h change (Binance Futures) ────────────────────────────────────────
   let scoreOi = 0;
   const oiRes = await safeFetch(`${BINANCE_FUT}/futures/data/openInterestHist?symbol=${symbol}&period=4h&limit=2`);
   if (oiRes?.ok) {
@@ -212,8 +194,9 @@ async function layerDerivatives(coin: string, symbol: string, price: number, pri
       else if (oiChg < -5) scoreOi = -1;
     }
   }
+  d.scoreOi = scoreOi;
 
-  // Long/Short ratio
+  // ── Long/Short ratio (Binance Futures) ────────────────────────────────────
   let scoreLs = 0;
   const lsRes = await safeFetch(`${BINANCE_FUT}/futures/data/globalLongShortAccountRatio?symbol=${symbol}&period=1h&limit=1`);
   if (lsRes?.ok) {
@@ -225,8 +208,9 @@ async function layerDerivatives(coin: string, symbol: string, price: number, pri
       else if (ratio > 1.5) scoreLs = -1;
     }
   }
+  d.scoreLs = scoreLs;
 
-  // Taker buy/sell
+  // ── Taker buy/sell volume (Binance Futures) ───────────────────────────────
   let scoreFlow = 0;
   const tkRes = await safeFetch(`${BINANCE_FUT}/futures/data/takerlongshortRatio?symbol=${symbol}&period=1h&limit=1`);
   if (tkRes?.ok) {
@@ -239,10 +223,7 @@ async function layerDerivatives(coin: string, symbol: string, price: number, pri
       else if (buyFrac < 0.45) scoreFlow = -1;
     }
   }
-
-  const sFund = funding < -0.03 ? 2 : funding < -0.01 ? 1 : funding <= 0.01 ? 0 : funding <= 0.03 ? -1 : -2;
-  d.fundingRate = Math.round(funding * 10000) / 10000;
-  d.scoreFunding = sFund; d.scoreOi = scoreOi; d.scoreLs = scoreLs; d.scoreFlow = scoreFlow;
+  d.scoreFlow = scoreFlow;
 
   return { score: Math.max(-5, Math.min(5, sFund + scoreOi + scoreLs + scoreFlow)), maxPossible: 5, details: d, warnings: w };
 }

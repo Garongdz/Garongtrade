@@ -107,12 +107,10 @@ router.get("/signals/debug/:coin", async (req, res) => {
 router.get("/signals/api-monitor", (_req, res) => {
   res.json({
     usage: {
-      coinglassMonthly: { used: apiUsage.coinglassMonthly, limit: 10000, unit: "bulan" },
       blockchairDaily: { used: apiUsage.blockchairDaily, limit: 1440, unit: "hari" },
       claudeToday: { used: apiUsage.claudeCallsToday, limit: 2, unit: "hari" },
     },
     status: apiStatus,
-    hasCoinglassKey: !!process.env.COINGLASS_API_KEY,
   });
 });
 

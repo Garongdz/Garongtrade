@@ -68,7 +68,6 @@ interface ScanSettings {
 interface ApiMonitor {
   usage: Record<string, { used: number; limit: number; unit: string }>;
   status: Record<string, string>;
-  hasCoinglassKey: boolean;
 }
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -400,13 +399,6 @@ function ApiMonitorPanel({ monitor, t }: { monitor: ApiMonitor | null; t: (k: st
           })}
         </div>
       </div>
-
-      {!monitor.hasCoinglassKey && (
-        <div className="text-xs text-yellow-400/80 flex items-start gap-2">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-          <span>COINGLASS_API_KEY belum diset. Derivatives data (lapisan dengan bobot terbesar) tidak tersedia.</span>
-        </div>
-      )}
 
       {/* Live Score Debug */}
       <div>
